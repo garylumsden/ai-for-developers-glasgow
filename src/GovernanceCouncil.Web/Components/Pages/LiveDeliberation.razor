@@ -1,0 +1,776 @@
+@page "/deliberation/{DeliberationId}/live"
+@using Microsoft.AspNetCore.SignalR.Client
+@using GovernanceCouncil.Core.Models
+@using GovernanceCouncil.Core.Interfaces
+@using static GovernanceCouncil.Web.Components.DebateChamber
+@inject NavigationManager Navigation
+@inject IDeliberationStore DeliberationStore
+@inject IDossierStore DossierStore
+@inject IDossierBlobService BlobService
+@inject GovernanceCouncil.Agents.Orchestration.CouncilOrchestrator Orchestrator
+@inject ILogger<LiveDeliberation> Logger
+@implements IAsyncDisposable
+@rendermode InteractiveServer
+
+<PageTitle>Live Debate — @DeliberationId</PageTitle>
+
+<!--
+THESIS: Follow live deliberation without scrolling between responses, hands, and moderator activity.
+OWN-WORLD: The shared navy palette, Segoe UI, flat panels, blue actions, and gold live states.
+STORY: Read the discussion, inspect requests to speak, and see the Moderator's supplied selection reasons.
+FIRST VIEWPORT: Two layout options above the announcement, response workspace, timeline, and raised-hand shelf.
+FORM: User-approved Live desk and Focus stage from the wireframe exploration, seed 6439cdcf.
+-->
+<div class="live-debate">
+    <header class="live-debate-header">
+        <div class="live-debate-heading">
+            <a href="/dossiers">Dossiers</a>
+            <h1>@(_dossier?.Title ?? "Live debate")</h1>
+        </div>
+        <span class="live-debate-model" title="@ModelProfileTooltip">@CouncilModels.ProfileDisplayName</span>
+    </header>
+
+    @if (_contentSafetyApplying)
+    {
+        <div class="live-debate-notice" role="status" aria-live="polite">
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            <span>Applying the content-safety setting… this takes a few seconds to take effect before the council convenes.</span>
+        </div>
+    }
+
+    @if (_contentSafetyBlocked.Count > 0)
+    {
+        <div class="live-debate-notice" role="status" aria-live="polite">
+            <span aria-hidden="true">🛡️</span>
+            <div>
+                <strong>Content safety triggered.</strong>
+                @($"{_contentSafetyBlocked.Count} contribution(s) were blocked by the Responsible AI policy") —
+                <span>@string.Join(", ", _contentSafetyBlocked.Keys)</span>.
+                Those members were skipped; the debate continued with the rest. To allow this content,
+                set the Content safety control on the dossier page to a more permissive level and re-run.
+            </div>
+        </div>
+    }
+
+    @if (_documentError is not null)
+    {
+        <div class="live-debate-notice" role="status">@_documentError</div>
+    }
+
+    <DebateChamber DeliberationId="@DeliberationId"
+                   Seats="BuildSeats()"
+                   Phase="@_phase"
+                   Round="_round"
+                   MaxRounds="_maxRounds"
+                   Transcript="BuildTranscript()"
+                   ConclusionReason="@_conclusionReason"
+                   AssessmentMode="@IsAssessmentPhase"
+                   AssessmentConfirmed="_assessmentConfirmed"
+                   Completed="_completed"
+                   AssessmentHref="@(_assessmentId is null ? null : $"/assessment/{_assessmentId}")"
+                   ModeratorLabel="@ModeratorLabel"
+                   ModeratorAnnouncement="@ModeratorAnnouncement"
+                   ModeratorCalling="_moderatorCalling"
+                   ModeratorEvents="_moderatorEvents"
+                   ConnectionInterrupted="_connectionInterrupted"
+                   Error="@_error"
+                   DossierTitle="@_dossier?.Title"
+                   DossierMarkdown="@_dossierMarkdown" />
+</div>
+
+@code {
+    [Parameter] public string DeliberationId { get; set; } = "";
+    [SupplyParameterFromQuery] public string? DossierId { get; set; }
+    [SupplyParameterFromQuery(Name = "cs")] public string? Safety { get; set; }
+
+    private Deliberation? _deliberation;
+    private Dossier? _dossier;
+    private string? _dossierMarkdown;
+    private HubConnection? _hubConnection;
+    private readonly CancellationTokenSource _lifetime = new();
+    private Task? _pollTask;
+    private bool _disposed;
+    private bool _completed;
+    private string? _assessmentId;
+    private string? _error;
+    private string? _documentError;
+    private bool _connectionInterrupted;
+    private bool _statusRefreshFailed;
+    private readonly List<ModeratorEventVm> _moderatorEvents = [];
+    private long _eventSequence;
+
+    // Live-debate state
+    private string? _phase;
+    private int _round;
+    private int _maxRounds;
+    private string? _activeSpeaker;
+    private string? _conclusionReason;
+    private string? _moderatorCallReason;
+    private bool _moderatorCalling;
+    private bool _assessmentConfirmed;
+    private int _assessmentCount;
+    // Members whose contribution was blocked by the content-safety policy (display name → kept once).
+    private readonly Dictionary<string, byte> _contentSafetyBlocked = new(StringComparer.OrdinalIgnoreCase);
+    // True while the content-safety policy is being updated for this run (control-plane + propagation).
+    private bool _contentSafetyApplying;
+    private readonly Dictionary<string, AgentStreamState> _agentStates = new(StringComparer.OrdinalIgnoreCase);
+
+    // Accumulating chat-style transcript of speaker turns (debate/synthesis phases).
+    private readonly List<TurnState> _turns = new();
+    private TurnState? _currentTurn;
+
+    private sealed class TurnState
+    {
+        public Guid Id { get; } = Guid.NewGuid();
+        public required string AgentKey { get; init; }
+        public string Text { get; set; } = "";
+        public bool Speaking { get; set; }
+        public bool IsSynthesis { get; set; }
+        public bool IsAssessment { get; set; }
+        public bool IsNexus { get; set; }
+        public int? NexusCount { get; set; }
+        public bool Blocked { get; set; }
+        public List<Citation> Citations { get; } = new();
+    }
+
+    // The Nexus Analyst's post-synthesis turn (running → found N). Tracked separately so its
+    // status-only turn never collides with the streaming speaker turns.
+    private TurnState? _nexusTurn;
+
+    private sealed class AgentStreamState
+    {
+        public bool IsSpeaking { get; set; }
+        public bool IsComplete { get; set; }
+        public bool HandRaised { get; set; }
+        public string? HandReason { get; set; }
+        public bool MicLive { get; set; }
+        public int SpeakCount { get; set; }
+        public bool Assessing { get; set; }
+        public bool Blocked { get; set; }
+        public string? PositionSummary { get; set; }
+        public string Text { get; set; } = "";
+        // Phase-1 initial-assessment text only — kept separate so later debate/bid
+        // streaming never pollutes the roll-call preview.
+        public string AssessmentText { get; set; } = "";
+        public List<Citation> Citations { get; } = new();
+    }
+
+    // Per-seat presentation derived from a configured persona — never hard-coded. The roster,
+    // names, roles, count, and colours all come from the active scenario via CouncilMembers.
+    private sealed record RosterEntry(string Key, string Name, string Role, string Initials, string Colour, string Avatar, bool IsChair = false);
+
+    private static RosterEntry ToEntry(CouncilMember m, bool isChair = false) =>
+        new($"gc-{m.Id}", m.Name, m.Role, SeatInitials(m.Name), SeatColour(m.Id), Avatars.For(m), isChair);
+
+    // Chamber seats: the scenario's debating members (in order), then the Chair at the podium.
+    // Moderator and Nexus Analyst are framework roles and are intentionally not seated.
+    private static List<RosterEntry> Roster
+    {
+        get
+        {
+            var entries = CouncilMembers.DeliberationMembers.Select(m => ToEntry(m)).ToList();
+            entries.Add(ToEntry(CouncilMembers.Chair, isChair: true));
+            return entries;
+        }
+    }
+
+    // Always label by the configured display name (Persona.Name); fall back to the raw key, never a role.
+    private static string SpeakerName(string key) =>
+        CouncilMembers.ByAgentName(key)?.Name ?? key;
+
+    // The Moderator labelled by its configured display name, e.g. "Bob (Moderator)". Falls back to the
+    // plain role when the scenario has no moderator name.
+    private static string ModeratorLabel
+    {
+        get
+        {
+            var name = CouncilMembers.Moderator.Name;
+            return string.IsNullOrWhiteSpace(name) ? "Moderator"
+                : name.Contains("Moderator", StringComparison.OrdinalIgnoreCase) ? name
+                : $"{name} (Moderator)";
+        }
+    }
+
+    private string ModeratorAnnouncement =>
+        _completed ? "The Assessment is ready."
+        : _error is not null ? "The deliberation stopped. Review the error and the events received so far."
+        : _connectionInterrupted ? "The live connection is interrupted. This view shows the last received state."
+        : _conclusionReason is not null ? $"The debate has concluded. {_conclusionReason}"
+        : IsAssessmentPhase ? (_assessmentConfirmed
+            ? $"All {_assessmentCount} initial positions received. Opening the debate."
+            : "Members, please table your initial positions.")
+        : _moderatorCalling ? $"The floor is open. Who wishes to speak in round {_round}?"
+        : _activeSpeaker is not null && !string.IsNullOrWhiteSpace(_moderatorCallReason)
+            ? $"{SpeakerName(_activeSpeaker)} has the floor. {_moderatorCallReason}"
+        : "Waiting for the next moderator announcement.";
+
+    private void AddModeratorEvent(ModeratorEventKind kind, string title, string? detail = null) =>
+        _moderatorEvents.Add(new(++_eventSequence, DateTimeOffset.Now, _round, kind, title, detail));
+
+    private Task UpdateAsync(Action update) => _disposed ? Task.CompletedTask : InvokeAsync(() =>
+    {
+        if (_disposed) return;
+        update();
+        StateHasChanged();
+    });
+
+    // Deterministic initials from a display name: handles single/multi-word and non-Latin names.
+    private static string SeatInitials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var words = name.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        static string FirstRune(string w)
+        {
+            foreach (var r in w.EnumerateRunes()) return r.ToString();
+            return "";
+        }
+        var s = words.Length == 1
+            ? string.Concat(words[0].EnumerateRunes().Take(2).Select(r => r.ToString()))
+            : FirstRune(words[0]) + FirstRune(words[^1]);
+        s = s.ToUpperInvariant();
+        return string.IsNullOrEmpty(s) ? "?" : s;
+    }
+
+    // Deterministic, process-independent colour from the persona id (FNV-1a → evenly spaced hue),
+    // so an arbitrary number of members each get a distinct, stable colour.
+    private static string SeatColour(string id)
+    {
+        uint hash = 2166136261u;
+        foreach (var ch in id)
+        {
+            hash ^= ch;
+            hash *= 16777619u;
+        }
+        var hue = hash % 360u;
+        return $"hsl({hue}, 60%, 46%)";
+    }
+
+    // True while the council is forming independent positions (Phase 1), before the debate opens.
+    private bool IsAssessmentPhase =>
+        string.Equals(_phase, "Independent Assessment", StringComparison.OrdinalIgnoreCase)
+        && !_completed && _conclusionReason is null;
+
+    // Hover detail for the model-profile badge: which model each role runs on under the active profile.
+    private static string ModelProfileTooltip =>
+        $"Personas: {CouncilModels.Reasoning} · Moderator: {CouncilModels.Fast} · " +
+        $"Chair & Nexus: {CouncilModels.Synthesis} · " +
+        $"Structured outputs: {(CouncilModels.UseStructuredOutputs ? "on" : "off")}";
+
+    private List<DebateChamber.SeatVm> BuildSeats()
+    {
+        var roster = Roster;
+        var seats = new List<DebateChamber.SeatVm>(roster.Count);
+        foreach (var r in roster)
+        {
+            _agentStates.TryGetValue(r.Key, out var st);
+            seats.Add(new DebateChamber.SeatVm
+            {
+                Key = r.Key,
+                DisplayName = r.Name,
+                Role = r.Role,
+                Initials = r.Initials,
+                Colour = r.Colour,
+                Avatar = r.Avatar,
+                IsChair = r.IsChair,
+                HandRaised = st?.HandRaised ?? false,
+                HandReason = st?.HandReason,
+                MicLive = st?.MicLive ?? false,
+                Speaking = st?.IsSpeaking ?? false,
+                Assessing = st?.Assessing ?? false,
+                Blocked = st?.Blocked ?? false,
+                PositionSummary = st?.PositionSummary,
+                Detail = st?.AssessmentText,
+            });
+        }
+        return seats;
+    }
+
+    private List<DebateChamber.TurnVm> BuildTranscript()
+    {
+        var vms = new List<DebateChamber.TurnVm>(_turns.Count);
+        foreach (var t in _turns)
+        {
+            // Resolve every speaker — members, Chair, and Nexus Analyst — by its configured
+            // display name; fall back to the raw key (never a role) if the key is unknown.
+            var member = CouncilMembers.ByAgentName(t.AgentKey);
+            vms.Add(new DebateChamber.TurnVm
+            {
+                Id = t.Id,
+                DisplayName = member?.Name ?? t.AgentKey,
+                Role = member?.Role ?? "",
+                Initials = member is null ? "?" : SeatInitials(member.Name),
+                Colour = member is null ? "#64748b" : SeatColour(member.Id),
+                Avatar = member is not null ? Avatars.For(member) : Avatars.For(t.AgentKey),
+                Text = t.Text,
+                Speaking = t.Speaking,
+                IsSynthesis = t.IsSynthesis,
+                IsAssessment = t.IsAssessment,
+                IsNexus = t.IsNexus,
+                NexusCount = t.NexusCount,
+                Blocked = t.Blocked,
+                Citations = t.Citations.Count > 0 ? t.Citations : null,
+            });
+        }
+        return vms;
+    }
+
+    private AgentStreamState GetOrAdd(string agentName)
+    {
+        if (!_agentStates.TryGetValue(agentName, out var s))
+        {
+            s = new AgentStreamState();
+            _agentStates[agentName] = s;
+        }
+        return s;
+    }
+
+    private void StopLiveIndicators()
+    {
+        _moderatorCalling = false;
+        foreach (var state in _agentStates.Values)
+        {
+            state.MicLive = false;
+            state.IsSpeaking = false;
+            state.HandRaised = false;
+            state.HandReason = null;
+            state.Assessing = false;
+        }
+        if (_currentTurn is not null) _currentTurn.Speaking = false;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _deliberation = await DeliberationStore.GetOrDefaultAsync(DeliberationId, _lifetime.Token);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { return; }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Could not load the live deliberation.");
+            _error = "The deliberation could not be loaded. Return to the Dossier Library to try again.";
+            return;
+        }
+
+        var docId = _deliberation?.DossierId ?? DossierId;
+        if (docId is not null && _dossier is null)
+            await LoadDossierAsync(docId, _lifetime.Token);
+
+        if (_disposed) return;
+
+        if (_deliberation is not null)
+        {
+            if (_deliberation.Status == DeliberationStatus.Completed && _deliberation.AssessmentId is not null)
+            {
+                _completed = true;
+                _assessmentId = _deliberation.AssessmentId;
+                return;
+            }
+            if (_deliberation.Status == DeliberationStatus.Failed)
+            {
+                _error = _deliberation.ErrorMessage ?? "Unknown error";
+                return;
+            }
+        }
+
+        if (!RendererInfo.IsInteractive) return;
+
+        _hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("/hubs/deliberation"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        _hubConnection.On<string>("DeliberationStarted", _ =>
+            UpdateAsync(() => AddModeratorEvent(ModeratorEventKind.Status, "Deliberation started")));
+
+        _hubConnection.On<string>("DeliberationComplete", assessmentId => UpdateAsync(() =>
+        {
+            _completed = true;
+            _assessmentId = assessmentId;
+            StopLiveIndicators();
+            AddModeratorEvent(ModeratorEventKind.Status, "Assessment delivered", "The Assessment is ready to review.");
+        }));
+
+        _hubConnection.On<string>("DeliberationError", error => UpdateAsync(() =>
+        {
+            _error = error;
+            StopLiveIndicators();
+            AddModeratorEvent(ModeratorEventKind.Warning, "Deliberation stopped", "The deliberation reported an error. Responses received before the error remain available.");
+        }));
+
+        // --- Streaming speech (all modes) ---
+        _hubConnection.On<string>("AgentSpeaking", agentName => UpdateAsync(() =>
+        {
+            var s = GetOrAdd(agentName);
+            if (IsAssessmentPhase)
+            {
+                // Independent Assessment: every member forms a position in parallel — there is no
+                // single active speaker, so just light up their "assessing" state.
+                s.Assessing = true;
+                s.IsComplete = false;
+                s.HandRaised = false;
+                // Phase-1 activity lives in the initial-position boxes only — never the transcript.
+                return;
+            }
+            s.IsSpeaking = true;
+            s.IsComplete = false;
+            s.HandRaised = false;     // lower hand once recognised
+            s.MicLive = true;          // push-to-talk lights up
+            s.SpeakCount++;
+            _activeSpeaker = agentName;
+            if (_currentTurn is not null) _currentTurn.Speaking = false;
+            // Start a fresh transcript turn so previous speakers' contributions are preserved.
+            _currentTurn = new TurnState
+            {
+                AgentKey = agentName,
+                Speaking = true,
+                IsSynthesis = string.Equals(_phase, "Synthesis", StringComparison.OrdinalIgnoreCase),
+            };
+            _turns.Add(_currentTurn);
+            // Only one mic live at a time
+            foreach (var (k, st) in _agentStates)
+                if (!string.Equals(k, agentName, StringComparison.OrdinalIgnoreCase))
+                {
+                    st.MicLive = false;
+                    st.IsSpeaking = false;
+                }
+        }));
+
+        _hubConnection.On<string, string>("AgentResponseChunk", (agentName, text) => UpdateAsync(() =>
+        {
+            var s = GetOrAdd(agentName);
+            s.Text += text;
+            if (IsAssessmentPhase)
+            {
+                // Phase-1: keep the full initial-position markdown in its own buffer for the
+                // box body / expand-on-click. It is NOT pushed into the debate transcript.
+                s.AssessmentText += text;
+            }
+            else
+            {
+                _activeSpeaker ??= agentName;
+                // Append to the live transcript turn; create one if a chunk somehow precedes AgentSpeaking.
+                if (_currentTurn is null || !string.Equals(_currentTurn.AgentKey, agentName, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (_currentTurn is not null) _currentTurn.Speaking = false;
+                    _currentTurn = new TurnState
+                    {
+                        AgentKey = agentName,
+                        Speaking = true,
+                        IsSynthesis = string.Equals(_phase, "Synthesis", StringComparison.OrdinalIgnoreCase),
+                    };
+                    _turns.Add(_currentTurn);
+                }
+                _currentTurn.Text += text;
+            }
+        }));
+
+        _hubConnection.On<string>("AgentComplete", agentName => UpdateAsync(() =>
+        {
+            if (_agentStates.TryGetValue(agentName, out var state))
+            {
+                state.IsSpeaking = false;
+                state.IsComplete = true;
+                state.MicLive = false;
+                state.Assessing = false;
+            }
+            if (_currentTurn is not null && string.Equals(_currentTurn.AgentKey, agentName, StringComparison.OrdinalIgnoreCase))
+                _currentTurn.Speaking = false;
+        }));
+
+        // --- Live-debate events ---
+        _hubConnection.On<string>("DebatePhase", phase => UpdateAsync(() =>
+        {
+            _phase = phase;
+            if (string.Equals(phase, "Independent Assessment", StringComparison.OrdinalIgnoreCase))
+                _assessmentConfirmed = false;
+            AddModeratorEvent(ModeratorEventKind.Phase, phase,
+                IsAssessmentPhase ? "The Moderator asks members to table their initial positions." : null);
+        }));
+
+        _hubConnection.On<int, int>("DebateRoundStarted", (round, maxRounds) => UpdateAsync(() =>
+        {
+            _round = round;
+            _maxRounds = maxRounds;
+        }));
+
+        _hubConnection.On<string, bool, string>("AgentHandRaised", (agentName, wantsToSpeak, reason) => UpdateAsync(() =>
+        {
+            var s = GetOrAdd(agentName);
+            s.HandRaised = wantsToSpeak;
+            s.HandReason = wantsToSpeak ? reason : null;
+            if (wantsToSpeak)
+                AddModeratorEvent(ModeratorEventKind.HandRaised, $"{SpeakerName(agentName)} requests the floor", reason);
+        }));
+
+        _hubConnection.On<int>("ModeratorCallingForSpeakers", round => UpdateAsync(() =>
+        {
+            _round = round;
+            _moderatorCalling = true;
+            _moderatorCallReason = null;
+            // Clean slate: clear last round's hands so new bids visibly rise during the call.
+            foreach (var (_, st) in _agentStates)
+            {
+                st.HandRaised = false;
+                st.HandReason = null;
+            }
+            AddModeratorEvent(ModeratorEventKind.CallForHands, "Call for hands", $"The Moderator opens the floor for round {round}.");
+        }));
+
+        _hubConnection.On<MemberPosition>("MemberAssessed", p => UpdateAsync(() =>
+        {
+            if (p is null) return;
+            // Fill this member's initial-position card the instant its assessment lands — live,
+            // per-member, without waiting for the whole roll-call to complete.
+            var st = GetOrAdd(p.AgentName);
+            st.PositionSummary = p.Summary;
+            st.Assessing = false;
+        }));
+
+        _hubConnection.On<MemberPosition[]>("ModeratorAssessmentRollCall", positions => UpdateAsync(() =>
+        {
+            _assessmentCount = positions?.Length ?? 0;
+            if (positions is not null)
+                foreach (var p in positions)
+                {
+                    var st = GetOrAdd(p.AgentName);
+                    st.PositionSummary = p.Summary;
+                    st.Assessing = false;
+                }
+            _assessmentConfirmed = true;
+            AddModeratorEvent(ModeratorEventKind.Status, "Initial positions received",
+                $"The Moderator confirms {_assessmentCount} initial positions.");
+        }));
+
+        _hubConnection.On<string, string>("ModeratorSelectedSpeaker", (agentName, reason) => UpdateAsync(() =>
+        {
+            _moderatorCalling = false;
+            _activeSpeaker = agentName;
+            _moderatorCallReason = reason;
+            var sel = GetOrAdd(agentName);
+            sel.HandRaised = false;
+            sel.MicLive = true;
+            foreach (var (k, st) in _agentStates)
+                if (!string.Equals(k, agentName, StringComparison.OrdinalIgnoreCase))
+                    st.MicLive = false;
+            AddModeratorEvent(ModeratorEventKind.SpeakerSelected, $"{SpeakerName(agentName)} selected", reason);
+        }));
+
+        _hubConnection.On<string, Citation[]>("AgentCitations", (agentName, citations) => UpdateAsync(() =>
+        {
+            var s = GetOrAdd(agentName);
+            s.Citations.Clear();
+            if (citations is not null) s.Citations.AddRange(citations);
+            // Mirror onto the matching live transcript turn for per-turn citation chips.
+            if (_currentTurn is not null && string.Equals(_currentTurn.AgentKey, agentName, StringComparison.OrdinalIgnoreCase))
+            {
+                _currentTurn.Citations.Clear();
+                if (citations is not null) _currentTurn.Citations.AddRange(citations);
+            }
+        }));
+
+        _hubConnection.On<string>("DebateConcluded", reason => UpdateAsync(() =>
+        {
+            _conclusionReason = reason;
+            _moderatorCallReason = null;
+            _moderatorCalling = false;
+            StopLiveIndicators();
+            AddModeratorEvent(ModeratorEventKind.Status, "Debate concluded", reason);
+        }));
+
+        // Nexus Analyst stage — appears in the thread after the Chair's synthesis, the same way the
+        // Chair's turn does. count == null ⇒ running; count >= 0 ⇒ finished (0 ⇒ no connections).
+        _hubConnection.On<string, int?>("NexusAnalysis", (agentName, count) => UpdateAsync(() =>
+        {
+            if (_nexusTurn is null)
+            {
+                _nexusTurn = new TurnState { AgentKey = agentName, IsNexus = true };
+                _turns.Add(_nexusTurn);
+            }
+            _nexusTurn.Speaking = count is null;
+            _nexusTurn.NexusCount = count;
+        }));
+
+        // A member's contribution was blocked by the content-safety (RAI) policy — surface it so the
+        // trigger is visible to the user instead of being silently swallowed.
+        _hubConnection.On<string, string>("ContentSafetyTriggered", (agentName, scope) => UpdateAsync(() =>
+        {
+            var s = GetOrAdd(agentName);
+            s.Blocked = true;
+            s.Assessing = false;
+            s.IsSpeaking = false;
+            s.MicLive = false;
+            _contentSafetyBlocked[SpeakerName(agentName)] = 1;
+            // Mark this speaker's CURRENT live turn as blocked so it stops showing "Taking the floor…" /
+            // "finalising" and instead states it was blocked. Only the active turn — a blocked bid (no
+            // active turn for that member) must not retro-flag an earlier speech.
+            if (_currentTurn is not null && string.Equals(_currentTurn.AgentKey, agentName, StringComparison.OrdinalIgnoreCase))
+            {
+                _currentTurn.Blocked = true;
+                _currentTurn.Speaking = false;
+            }
+            AddModeratorEvent(ModeratorEventKind.Warning, $"{SpeakerName(agentName)} contribution blocked",
+                "The content-safety policy blocked this contribution.");
+        }));
+
+        // The content-safety strictness is being applied for this run (a few seconds to propagate).
+        _hubConnection.On<bool>("ContentSafetyApplying", applying => UpdateAsync(() =>
+        {
+            _contentSafetyApplying = applying;
+        }));
+
+        var connection = _hubConnection;
+        connection.Reconnecting += _ => UpdateAsync(() =>
+        {
+            _connectionInterrupted = true;
+            AddModeratorEvent(ModeratorEventKind.Connection, "Connection interrupted",
+                "Showing the last received state. Events during this interruption may be missing.");
+        });
+        connection.Reconnected += async _ =>
+        {
+            if (_disposed) return;
+            try
+            {
+                await connection.InvokeAsync("JoinDeliberation", DeliberationId, _lifetime.Token);
+                await UpdateAsync(() =>
+                {
+                    _connectionInterrupted = false;
+                    AddModeratorEvent(ModeratorEventKind.Connection, "Connection restored",
+                        "This view rejoined the debate. Events from the interruption are not replayed.");
+                });
+            }
+            catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Could not rejoin the live debate after reconnecting.");
+                await UpdateAsync(() =>
+                {
+                    _connectionInterrupted = true;
+                    AddModeratorEvent(ModeratorEventKind.Connection, "Could not rejoin the debate",
+                        "Reload this page to reconnect. The current timeline will not be retained.");
+                });
+            }
+        };
+        connection.Closed += _ => UpdateAsync(() =>
+        {
+            _connectionInterrupted = true;
+            AddModeratorEvent(ModeratorEventKind.Connection, "Live connection closed",
+                "Reload this page to reconnect. The current timeline will not be retained.");
+        });
+
+        try
+        {
+            await connection.StartAsync(_lifetime.Token);
+            await connection.InvokeAsync("JoinDeliberation", DeliberationId, _lifetime.Token);
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { return; }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Could not connect to the live debate.");
+            _error = "The live connection could not be started. Reload this page to try again.";
+            _connectionInterrupted = true;
+            return;
+        }
+
+        // Now that we're listening, start the debate so no opening events are missed. The record is
+        // created Pending and only kicked off here, once a viewer has joined the SignalR group.
+        // Guard on IsInteractive so the prerender pass doesn't start it before the real circuit joins.
+        if (RendererInfo.IsInteractive && _deliberation is { Status: DeliberationStatus.Pending })
+        {
+            Orchestrator.StartDeliberationOnce(_deliberation.DossierId, DeliberationId, Safety);
+        }
+
+        _pollTask = PollForCompletionAsync(_lifetime.Token);
+    }
+
+    private async Task PollForCompletionAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(3), ct);
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+            while (!_completed && _error is null)
+            {
+                try
+                {
+                    var updated = await DeliberationStore.GetOrDefaultAsync(DeliberationId, ct);
+                    if (updated is not null)
+                    {
+                        await UpdateAsync(() =>
+                        {
+                            _deliberation = updated;
+                            if (_statusRefreshFailed)
+                            {
+                                _statusRefreshFailed = false;
+                                AddModeratorEvent(ModeratorEventKind.Status, "Status refresh restored");
+                            }
+                            if (!_completed && updated.Status == DeliberationStatus.Completed && updated.AssessmentId is not null)
+                            {
+                                _completed = true;
+                                _assessmentId = updated.AssessmentId;
+                                StopLiveIndicators();
+                                AddModeratorEvent(ModeratorEventKind.Status, "Assessment available",
+                                    "The stored deliberation is complete. Some live events may not have reached this view.");
+                            }
+                            else if (_error is null && updated.Status == DeliberationStatus.Failed)
+                            {
+                                _error = updated.ErrorMessage ?? "The deliberation failed.";
+                                StopLiveIndicators();
+                                AddModeratorEvent(ModeratorEventKind.Warning, "Deliberation failed",
+                                    "The stored deliberation reports a failure.");
+                            }
+                        });
+                        if (_dossier is null && _dossierMarkdown is null && _documentError is null)
+                            await LoadDossierAsync(updated.DossierId, ct);
+                    }
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
+                catch (Exception ex)
+                {
+                    await UpdateAsync(() =>
+                    {
+                        if (_statusRefreshFailed) return;
+                        _statusRefreshFailed = true;
+                        Logger.LogWarning(ex, "Could not refresh the live deliberation status.");
+                        AddModeratorEvent(ModeratorEventKind.Warning, "Status refresh unavailable",
+                            "The stored status could not be refreshed. Live events can still arrive through the debate connection.");
+                    });
+                }
+                if (!await timer.WaitForNextTickAsync(ct)) break;
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+    }
+
+    private async Task LoadDossierAsync(string dossierId, CancellationToken ct)
+    {
+        try
+        {
+            var dossier = await DossierStore.GetAsync(dossierId, ct);
+            var markdown = string.IsNullOrEmpty(dossier.MarkdownBlobPath)
+                ? "*No document content stored.*"
+                : await BlobService.GetMarkdownAsync(dossier.MarkdownBlobPath, ct);
+            await UpdateAsync(() =>
+            {
+                _dossier = dossier;
+                _dossierMarkdown = markdown;
+            });
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Could not load the dossier for the live debate.");
+            await UpdateAsync(() => _documentError = "The dossier could not be loaded. Return to the Dossier Library to try again.");
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        await _lifetime.CancelAsync();
+        if (_pollTask is not null) await _pollTask;
+        if (_hubConnection is not null)
+            await _hubConnection.DisposeAsync();
+        _lifetime.Dispose();
+    }
+}

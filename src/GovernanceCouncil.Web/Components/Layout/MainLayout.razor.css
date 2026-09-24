@@ -1,0 +1,135 @@
+.page {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+    min-width: 0;
+}
+
+.sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    flex-shrink: 0;
+    background: var(--gc-bg-elevated);
+    border-bottom: 1px solid var(--gc-border);
+}
+
+main {
+    flex: 1;
+    min-width: 0;
+    background: var(--gc-bg);
+}
+
+main:focus {
+    outline: none;
+}
+
+article.content {
+    width: 100%;
+    max-width: 1440px;
+    margin-inline: auto;
+    padding: clamp(1.25rem, 3vw, 2.5rem);
+}
+
+.page:has(.live-debate) {
+    height: 100dvh;
+    overflow: hidden;
+}
+
+main:has(.live-debate) {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+article.content:has(.live-debate) {
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+    max-width: none;
+    padding: 0 !important;
+    overflow: hidden;
+}
+
+.skip-link {
+    position: fixed;
+    top: .5rem;
+    left: .5rem;
+    z-index: 1100;
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: .5rem 1rem;
+    border: 1px solid var(--gc-accent);
+    border-radius: var(--gc-radius);
+    color: var(--gc-text);
+    background: var(--gc-bg-elevated);
+    transform: translateY(calc(-100% - 1rem));
+}
+
+.skip-link:focus {
+    transform: translateY(0);
+}
+
+@media (min-width: 960px) {
+    .page {
+        flex-direction: row;
+    }
+
+    .sidebar {
+        width: 220px;
+        height: 100dvh;
+        border-right: 1px solid var(--gc-border);
+        border-bottom: 0;
+    }
+}
+
+@media (max-width: 479px) {
+    article.content {
+        padding: 1.25rem 1rem 2rem;
+    }
+}
+
+#blazor-error-ui {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 1000;
+    display: none;
+    padding: .875rem 4.5rem .875rem 1.25rem;
+    border-top: 1px solid var(--gc-danger);
+    background: var(--gc-bg-elevated);
+    color: var(--gc-text);
+    box-shadow: 0 -4px 20px rgb(0 0 0 / 20%);
+}
+
+#blazor-error-ui .reload {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    margin-left: .75rem;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: .2em;
+}
+
+#blazor-error-ui .dismiss {
+    position: absolute;
+    top: .625rem;
+    right: .75rem;
+    width: 44px;
+    height: 44px;
+    border: 1px solid var(--gc-border-strong);
+    border-radius: var(--gc-radius);
+    background: transparent;
+    color: var(--gc-text-muted);
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+#blazor-error-ui .dismiss:hover {
+    background: var(--gc-surface);
+    color: var(--gc-text);
+}

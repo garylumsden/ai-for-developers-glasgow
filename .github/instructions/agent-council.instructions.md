@@ -1,0 +1,97 @@
+---
+applyTo: '**'
+---
+# Copilot Instructions — Agent Council (template)
+
+This repository is the **Agent Council** template: a multi-agent **deliberation** engine on
+**Microsoft Foundry** + Azure. A council of expert agents reviews a document (a *Dossier*), debates it,
+and produces a structured **Assessment**; a **Nexus Analyst** then links assessments together.
+
+The engine is **scenario-neutral**. A concrete demo is created by configuration, not code — see the
+**Scenario Architect** agent (`.github/agents/scenario-architect.agent.md`).
+
+## Golden rules
+
+1. **Scenario lives in config, not code.** Branding, grounding domains, and the council composition
+   come from `config/scenario.json`; persona prompts come from `config/prompts/*.md` (on disk, no
+   rebuild). Never hard-code a scenario, persona, organisation, or domain into the C#/Razor.
+2. **Keep the engine scenario-agnostic.** Do not reintroduce a specific customer/sector into
+   `src/**`. Member rosters, ids, and counts are taken from the active scenario at runtime
+   (`CouncilMembers` projects `Scenario.Current`). The Chair structured-output schema
+   (`DebateSchemas`) is built from the live roster — keep it that way.
+3. **Identity-based auth, zero keys.** The local web process uses the signed-in Microsoft Entra user
+   through `DefaultAzureCredential` for Foundry, Cosmos, Blob, Search, and Azure control-plane calls.
+   The user is the same deploying principal that receives RBAC roles from `azd up`. The Foundry project
+   managed identity is separate and is used only for Foundry service-to-service access. Keep
+   `disableLocalAuth: true` on AI Services. No keys, connection strings, or secrets in code.
+4. **100% Infrastructure as Code.** All Azure resources via Bicep (`infra/`), provisioned with `azd`.
+   Verify resource schemas and use the latest stable API versions.
+5. **.NET 10.** C# 13 idioms — records, primary constructors, file-scoped namespaces, async throughout
+   (no `.Result`/`.Wait()`). DI via `Microsoft.Extensions.DependencyInjection`.
+6. **Runs locally only.** Run the Blazor Server app with
+   `dotnet run --project src/GovernanceCouncil.Web`. It reads `config/scenario.json` at startup.
+   Keep the loopback-only request guard. Do not add a container, hosted-agent, App Service, tunnel,
+   reverse-proxy, port-forward, or remote-server path. `ALLOW_REMOTE_ACCESS` is troubleshooting-only
+   and does not add authentication.
+7. **Keep docs in sync.** Update `README.md`, `ARCHITECTURE.md`, `SPEC.md`, and this file when the
+   framework, config model, model deployments, or key technical decisions change.
+
+## Scenario configuration model
+
+- `config/scenario.json` → `ScenarioConfig` (Core): `branding`, `groundingDomains`,
+  `council.{chair,moderator,nexusAnalyst,members[]}`. Loaded once at startup by `Scenario.Initialise()`.
+  Absent ⇒ neutral defaults (generic branding + empty council).
+- `PersonaConfig`: `id` (lowercase kebab), `name`, `role`, `description`, `tier`
+  (`Reasoning`/`Synthesis`/`Fast`), `knowledgeDomains?`, `promptFile`.
+- Prompts: `config/prompts/<promptFile>`. Framework roles (chair/moderator/nexus-analyst) fall back to
+  embedded scenario-neutral defaults; members without a file get a minimal identity prompt.
+- Branding: `Brand` (Web) projects `Scenario.Current.Branding`; emblem is an emoji or a path under
+  `wwwroot/branding/`. Theme tokens live in `wwwroot/app.css` — shared by default.
+
+## Architecture (framework)
+
+- **Runtimes** behind `ICouncilRuntime`: **Foundry Agents** (one tooled Prompt Agent per member,
+  provisioned via `AgentProvisioner`) and **Local MAF Agents** (`MafCouncilRuntime`, Microsoft Agent
+  Framework over Foundry chat models, in-process). Switchable at runtime.
+- **Models**: per-tier deployments selected by `CouncilModels` profiles (`Frontier`/`Balanced`/
+  `Fast`/`Grok`). Per-tier reasoning effort via `ReasoningEffortChatClient` (MAF) / agent
+  `reasoning:{effort}` (Foundry). Sampling left at model defaults (no custom temperature).
+- **Grounding**: `GroundingTools` (MAF) / MCP tool (Foundry), scoped to the member's effective
+  domains (`CouncilMembers.DomainsFor`); empty ⇒ ungrounded. Providers: Web IQ / Foundry IQ.
+- **Storage**: Cosmos DB (assessments, nexuses, dossiers, deliberations) + Blob (dossier markdown),
+  identity-based. Nexus Top-K uses **Cosmos NoSQL vector search** over a persisted `/embedding`.
+- **UI**: Blazor Server with shared task-first page headers, toolbars, and navigation.
+  The live debate offers **Live desk** and **Focus stage**, with independent response scrolling,
+  visible raised-hand reasons, and a moderator event timeline.
+  Keep selection and response history when switching layouts.
+  Record calls for hands, bids, selections, and supplied selection reasons from SignalR events;
+  never invent moderator reasoning.
+  Timeline receipt times are local. Entries last only while the view is open.
+  Rejoin the debate group after reconnecting and disclose gaps; the hub does not replay events.
+
+## Dependency pins (do not drift)
+
+`Microsoft.Agents.AI.Foundry 1.5.0` needs `OpenAI 2.10.0` (a ctor removed in 2.11.0 breaks the Foundry
+bridge). `OpenAI 2.10.0` + `Microsoft.Extensions.AI.OpenAI 10.6.0` are pinned in
+`GovernanceCouncil.Agents.csproj` — keep them.
+
+## Domain terminology
+
+| Term | Meaning |
+|---|---|
+| **Dossier** | A source document submitted for deliberation. |
+| **Deliberation** | One council session reviewing a dossier. |
+| **Assessment** | The structured output: recommendation, summary, votes, conditions, dissent, risks. |
+| **Nexus** | A discovered interconnection between two assessments. |
+| **Council Member** | A debating persona (an agent). |
+| **Chair / Moderator / Nexus Analyst** | Framework roles: synthesise / route / link. |
+
+Nexus types: `Implication` · `Contradiction` · `Dependency` · `Supersession` · `Reinforcement` ·
+`Tension`.
+
+## Build & verify
+
+```pwsh
+dotnet build src/GovernanceCouncil.Web/GovernanceCouncil.Web.csproj -v minimal   # 0 errors
+cd infra; az bicep build --file main.bicep                                       # exit 0
+```

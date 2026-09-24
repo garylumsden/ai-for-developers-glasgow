@@ -1,0 +1,42 @@
+﻿@page "/Error"
+@using System.Diagnostics
+
+<PageTitle>Error — @Brand.AppName</PageTitle>
+
+<section class="gc-recovery" aria-labelledby="error-title">
+    <header class="gc-page-header">
+        <div>
+            <h1 id="error-title" class="gc-page-title">The request could not be completed</h1>
+            <p class="gc-page-description">The app encountered an unexpected error. Return to the dashboard and try the action again.</p>
+        </div>
+    </header>
+
+    <div class="gc-action-group">
+        <a href="/" class="btn btn-primary">Return to dashboard</a>
+        <a href="/dossiers" class="btn btn-outline-secondary">Browse dossiers</a>
+    </div>
+
+    <div class="gc-recovery-details">
+        <h2>If the error continues</h2>
+        <p>Check the local app logs for more information.</p>
+        @if (ShowRequestId)
+        {
+            <p>Use this request ID to find the related log entry.</p>
+            <dl>
+                <dt>Request ID</dt>
+                <dd><code>@RequestId</code></dd>
+            </dl>
+        }
+    </div>
+</section>
+
+@code{
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    private string? RequestId { get; set; }
+    private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+
+    protected override void OnInitialized() =>
+        RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+}

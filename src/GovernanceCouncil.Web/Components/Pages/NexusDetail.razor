@@ -1,0 +1,151 @@
+@page "/nexus/{NexusId}/{SourceAssessmentId}"
+@using GovernanceCouncil.Core.Interfaces
+@using GovernanceCouncil.Core.Models
+@inject INexusStore NexusStore
+@inject IAssessmentStore AssessmentStore
+@inject ILogger<NexusDetail> Logger
+
+<PageTitle>Nexus — @NexusId</PageTitle>
+
+<div class="nexus-detail-page">
+    <nav aria-label="Breadcrumb" class="nexus-breadcrumb">
+        <a href="/nexus">Nexus explorer</a>
+        <span aria-hidden="true">/</span>
+        <span aria-current="page">Connection detail</span>
+    </nav>
+
+    @if (_loadFailed)
+    {
+        <header class="gc-page-header"><h1 class="gc-page-title">Nexus unavailable</h1></header>
+        <div class="gc-empty-state" role="alert">
+            <h2>This connection could not be loaded</h2>
+            <p>It may no longer be available, or the service may be temporarily unavailable. Try again or return to the explorer.</p>
+            <a href="/nexus/@NexusId/@SourceAssessmentId" class="btn btn-outline-secondary" data-enhance-nav="false">Try again</a>
+        </div>
+    }
+    else if (_nexus is null)
+    {
+        <header class="gc-page-header"><h1 class="gc-page-title">Nexus detail</h1></header>
+        <p class="gc-meta" role="status">Loading connection details…</p>
+    }
+    else
+    {
+        <header class="gc-page-header">
+            <div>
+                <h1 class="gc-page-title">@_nexus.NexusType</h1>
+                <p class="gc-page-description">Connection between two council assessments.</p>
+            </div>
+            <div class="gc-action-group"><a href="/nexus" class="btn btn-outline-secondary">Back to explorer</a></div>
+        </header>
+        <dl class="gc-meta nexus-record-meta">
+            <div><dt>Nexus</dt><dd>@_nexus.Id</dd></div>
+            <div><dt>Confidence</dt><dd>@_nexus.Confidence</dd></div>
+            <div><dt>Status</dt><dd>@_nexus.Status</dd></div>
+            <div><dt>Discovered</dt><dd>@_nexus.DiscoveredDate.ToString("dd MMM yyyy")</dd></div>
+        </dl>
+
+        <section class="nexus-section" aria-labelledby="nexus-summary-heading">
+            <div class="gc-section-header"><h2 id="nexus-summary-heading">Summary</h2></div>
+            <p class="nexus-narrative">@_nexus.Summary</p>
+        </section>
+
+        <section class="nexus-section" aria-labelledby="nexus-assessments-heading">
+            <div class="gc-section-header"><h2 id="nexus-assessments-heading">Connected assessments</h2></div>
+            <div class="gc-surface nexus-assessments">
+                <div class="nexus-assessment">
+                    <h3>Source assessment</h3>
+                    @if (!string.IsNullOrEmpty(_sourceTitle))
+                    {
+                        <p class="nexus-assessment-title"><a href="/assessment/@_nexus.SourceAssessmentId">@_sourceTitle</a></p>
+                    }
+                    else
+                    {
+                        <p class="gc-meta">Assessment title unavailable.</p>
+                    }
+                    <a href="/assessment/@_nexus.SourceAssessmentId" class="gc-meta">@_nexus.SourceAssessmentId</a>
+                </div>
+                <div class="nexus-assessment">
+                    <h3>Target assessment</h3>
+                    @if (!string.IsNullOrEmpty(_targetTitle))
+                    {
+                        <p class="nexus-assessment-title"><a href="/assessment/@_nexus.TargetAssessmentId">@_targetTitle</a></p>
+                    }
+                    else
+                    {
+                        <p class="gc-meta">Assessment title unavailable.</p>
+                    }
+                    <a href="/assessment/@_nexus.TargetAssessmentId" class="gc-meta">@_nexus.TargetAssessmentId</a>
+                </div>
+            </div>
+        </section>
+
+        <section class="nexus-section" aria-labelledby="nexus-points-heading">
+            <div class="gc-section-header"><h2 id="nexus-points-heading">Nexus points</h2></div>
+            <p class="gc-meta">Compare the recorded source and target excerpts for each relationship.</p>
+            @if (_nexus.NexusPoints.Any())
+            {
+                <div class="gc-surface nexus-points">
+                    @foreach (var point in _nexus.NexusPoints)
+                    {
+                        <article class="gc-list-row nexus-point">
+                            <h3><span class="gc-meta">Relationship:</span> @point.Relationship</h3>
+                            <div class="nexus-excerpts">
+                                <div>
+                                    <h4>Source excerpt</h4>
+                                    <blockquote>@point.SourceExcerpt</blockquote>
+                                </div>
+                                <div>
+                                    <h4>Target excerpt</h4>
+                                    <blockquote>@point.TargetExcerpt</blockquote>
+                                </div>
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="gc-meta">No nexus points recorded.</p>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    [Parameter] public string NexusId { get; set; } = "";
+    [Parameter] public string SourceAssessmentId { get; set; } = "";
+
+    private Nexus? _nexus;
+    private string? _sourceTitle;
+    private string? _targetTitle;
+    private bool _loadFailed;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _nexus = null;
+        _sourceTitle = null;
+        _targetTitle = null;
+        _loadFailed = false;
+        try
+        {
+            _nexus = await NexusStore.GetAsync(NexusId, SourceAssessmentId);
+            if (_nexus is null)
+            {
+                _loadFailed = true;
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load nexus {NexusId}", NexusId);
+            _loadFailed = true;
+            return;
+        }
+
+        try { _sourceTitle = (await AssessmentStore.GetAsync(_nexus.SourceAssessmentId)).DossierTitle; }
+        catch (Exception ex) { Logger.LogWarning(ex, "Source assessment title unavailable for nexus {NexusId}", NexusId); }
+
+        try { _targetTitle = (await AssessmentStore.GetAsync(_nexus.TargetAssessmentId)).DossierTitle; }
+        catch (Exception ex) { Logger.LogWarning(ex, "Target assessment title unavailable for nexus {NexusId}", NexusId); }
+    }
+}

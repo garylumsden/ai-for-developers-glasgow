@@ -1,0 +1,31 @@
+﻿@inherits LayoutComponentBase
+
+<FluentDesignTheme Mode="DesignThemeModes.Dark" CustomColor="#6ea8fe" StorageName="gc-theme" />
+
+<a class="skip-link" href="#main-content">Skip to content</a>
+
+<div class="page">
+    <aside class="sidebar" aria-label="Workspace navigation">
+        <NavMenu />
+    </aside>
+
+    <main id="main-content" tabindex="-1">
+        <article class="content">
+            @Body
+        </article>
+    </main>
+</div>
+
+<FluentToastProvider />
+<FluentDialogProvider />
+<FluentTooltipProvider />
+<FluentMessageBarProvider />
+<FluentMenuProvider />
+
+<div id="blazor-error-ui" role="alert" data-nosnippet>
+    <span>The app encountered an error. Reload the page to continue.</span>
+    <a href="." class="reload">Reload page</a>
+    <button type="button" class="dismiss" aria-label="Dismiss error message">
+        <span aria-hidden="true">×</span>
+    </button>
+</div>
