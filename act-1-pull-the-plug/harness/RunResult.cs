@@ -1,0 +1,13 @@
+record RunResult(
+    string Label,
+    string Runtime,
+    string Provider,
+    string Model,
+    DateTimeOffset StartedAt,
+    double DurationSeconds,
+    bool TimedOut,
+    bool Succeeded,
+    int? InputTokens,
+    int? OutputTokens,
+    int? QualityVote,
+    string? Notes);

@@ -1,0 +1,33 @@
+{
+  "source": "cached",
+  "retrievedAt": "2026-09-24T22:48:13.3572102+00:00",
+  "data": {
+    "model": "gpt-5.4",
+    "inputTokens": 120298,
+    "outputTokens": 2227,
+    "taskCount": 1000,
+    "cloud": {
+      "calculable": true,
+      "perTask": 0.334150,
+      "perThousandTasks": 334.1500,
+      "forTaskCount": 334.1500,
+      "currency": "USD",
+      "reason": null
+    },
+    "local": {
+      "calculable": true,
+      "perTask": 0.019527,
+      "perThousandTasks": 19.5270,
+      "forTaskCount": 19.5270,
+      "currency": "USD",
+      "reason": null
+    },
+    "localAssumptions": {
+      "hardwarePurchasePrice": 1800,
+      "amortizedTasks": 100000,
+      "workstationWatts": 250,
+      "electricityPricePerKwh": 0.2
+    }
+  },
+  "warning": null
+}

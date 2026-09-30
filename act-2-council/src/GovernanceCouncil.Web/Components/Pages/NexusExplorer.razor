@@ -1,0 +1,278 @@
+@page "/nexus"
+@using GovernanceCouncil.Core.Interfaces
+@using GovernanceCouncil.Core.Models
+@using Microsoft.JSInterop
+@inject INexusStore NexusStore
+@inject IAssessmentStore AssessmentStore
+@inject IJSRuntime JS
+@inject ILogger<NexusExplorer> Logger
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+<PageTitle>Nexus Explorer</PageTitle>
+
+<div class="nexus-explorer-page">
+    <header class="gc-page-header">
+        <div>
+            <h1 class="gc-page-title">Nexus explorer</h1>
+            <p class="gc-page-description">Trace connections between assessments and review the evidence for each relationship.</p>
+        </div>
+        <div class="gc-action-group">
+            <a href="/nexus/alerts" class="btn btn-outline-secondary">View recent alerts</a>
+        </div>
+    </header>
+
+    @if (_allNexuses is not null && _allNexuses.Any())
+    {
+        <section class="nexus-map" aria-labelledby="nexus-map-heading">
+            <div class="gc-section-header">
+                <h2 id="nexus-map-heading">Connection map</h2>
+                <a href="#nexus-results">Skip to connection list</a>
+            </div>
+            <p id="nexus-map-help" class="gc-meta">Select a node or edge to filter the list. Select again or use Clear filter to reset. All connections are also available in the list below.</p>
+            <div class="gc-surface nexus-graph" style="height: 450px; position: relative;" id="cy-container"
+                 role="region" aria-label="Assessment connection graph" aria-describedby="nexus-map-help">
+            </div>
+            @if (_graphFailed)
+            {
+                <p class="gc-meta nexus-map-notice" role="alert">The connection map could not be displayed. Use the type filter and connection list below, or reload this page to try the map again.</p>
+            }
+            <ul class="nexus-legend" aria-label="Connection types">
+                <li><span class="legend-implication" aria-hidden="true">●</span> Implication</li>
+                <li><span class="legend-contradiction" aria-hidden="true">●</span> Contradiction</li>
+                <li><span class="legend-dependency" aria-hidden="true">●</span> Dependency</li>
+                <li><span class="legend-supersession" aria-hidden="true">●</span> Supersession</li>
+                <li><span class="legend-reinforcement" aria-hidden="true">●</span> Reinforcement</li>
+                <li><span class="legend-tension" aria-hidden="true">●</span> Tension</li>
+            </ul>
+        </section>
+    }
+
+    <section id="nexus-results" class="nexus-results" aria-labelledby="nexus-results-heading" tabindex="-1">
+        <div class="gc-section-header">
+            <h2 id="nexus-results-heading">Connections</h2>
+            @if (_nexuses is not null)
+            {
+                <span class="gc-meta" role="status">@_nexuses.Count @(_nexuses.Count == 1 ? "connection" : "connections") shown</span>
+            }
+        </div>
+        <div class="gc-toolbar nexus-filters">
+            <div class="nexus-type-filter">
+                <label for="nexus-type">Nexus type</label>
+                <select id="nexus-type" class="form-select" value="@_typeFilter" @onchange="OnFilterChanged" disabled="@(_allNexuses is null || !_allNexuses.Any())" aria-controls="nexus-connection-list">
+                    <option value="">All types</option>
+                    @foreach (var type in Enum.GetValues<NexusType>())
+                    {
+                        <option value="@type">@type</option>
+                    }
+                </select>
+            </div>
+            @if (!string.IsNullOrEmpty(_graphFilter))
+            {
+                <span class="gc-meta nexus-selected-filter">Graph selection: @_graphFilter</span>
+            }
+            @if (!string.IsNullOrEmpty(_graphFilter) || !string.IsNullOrEmpty(_typeFilter))
+            {
+                <button type="button" class="btn btn-outline-secondary" @onclick="ClearGraphFilter">Clear filter</button>
+            }
+        </div>
+
+        <div id="nexus-connection-list">
+            @if (_loadFailed)
+            {
+                <div class="gc-empty-state" role="alert">
+                    <h3>Connections could not be loaded</h3>
+                    <p>Reload the explorer to try again. No nexus records have been changed.</p>
+                    <a href="/nexus" class="btn btn-outline-secondary" data-enhance-nav="false">Try again</a>
+                </div>
+            }
+            else if (_nexuses is null)
+            {
+                <p class="gc-meta" role="status">Loading connections…</p>
+            }
+            else if (!_nexuses.Any())
+            {
+                <div class="gc-empty-state">
+                    @if (_allNexuses is not null && _allNexuses.Any())
+                    {
+                        <h3>No connections match this filter</h3>
+                        <p>Choose another nexus type or clear the filter to see all connections.</p>
+                        <button type="button" class="btn btn-outline-secondary" @onclick="ClearGraphFilter">Show all connections</button>
+                    }
+                    else
+                    {
+                        <h3>No nexuses found</h3>
+                        <p>Connections will appear here when discovered between assessments.</p>
+                        <a href="/assessments" class="btn btn-outline-secondary">Review assessments</a>
+                    }
+                </div>
+            }
+            else
+            {
+                <ul class="gc-surface nexus-list" aria-label="Assessment connections">
+                    @foreach (var nexus in _nexuses)
+                    {
+                        <li class="gc-list-row nexus-row" @key="nexus.Id">
+                            <div class="nexus-row-heading">
+                                <h3><a href="/nexus/@nexus.Id/@nexus.SourceAssessmentId">@nexus.NexusType</a></h3>
+                                <span class="gc-meta">Confidence: @nexus.Confidence</span>
+                            </div>
+                            <p class="nexus-summary">@nexus.Summary</p>
+                            <div class="nexus-row-footer">
+                                <dl class="nexus-endpoints">
+                                    <div>
+                                        <dt>Source assessment</dt>
+                                        <dd><a href="/assessment/@nexus.SourceAssessmentId">@nexus.SourceAssessmentId</a></dd>
+                                    </div>
+                                    <div>
+                                        <dt>Target assessment</dt>
+                                        <dd><a href="/assessment/@nexus.TargetAssessmentId">@nexus.TargetAssessmentId</a></dd>
+                                    </div>
+                                </dl>
+                                <a href="/nexus/@nexus.Id/@nexus.SourceAssessmentId" class="btn btn-sm btn-outline-secondary"
+                                   aria-label="@($"Review {nexus.NexusType} nexus {nexus.Id}")">Review connection</a>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </section>
+</div>
+
+@code {
+    private IReadOnlyList<Nexus>? _nexuses;
+    private IReadOnlyList<Nexus>? _allNexuses;
+    private IReadOnlyList<Assessment>? _assessments;
+    private string _graphFilter = "";
+    private string _typeFilter = "";
+    private bool _loadFailed;
+    private bool _graphFailed;
+    private DotNetObjectReference<NexusExplorer>? _dotNetRef;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _allNexuses = await NexusStore.ListAllAsync();
+            _nexuses = _allNexuses;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load nexuses");
+            _loadFailed = true;
+            return;
+        }
+
+        try { _assessments = await AssessmentStore.ListAsync(); }
+        catch (Exception ex)
+        {
+            // Connections remain usable when assessment titles cannot be resolved.
+            Logger.LogWarning(ex, "Failed to load assessment titles for the nexus explorer");
+        }
+    }
+
+    private bool _graphRendered;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_graphRendered && _allNexuses is not null && _allNexuses.Any())
+        {
+            _graphRendered = true;
+            _dotNetRef = DotNetObjectReference.Create(this);
+
+            var assessmentIds = _allNexuses
+                .SelectMany(n => new[] { n.SourceAssessmentId, n.TargetAssessmentId })
+                .Distinct();
+
+            var nodes = assessmentIds.Select(id =>
+            {
+                var assessment = _assessments?.FirstOrDefault(a => a.AssessmentId == id);
+                var label = assessment is not null
+                    ? $"{id[..Math.Min(12, id.Length)]}\n{assessment.DossierTitle[..Math.Min(25, assessment.DossierTitle.Length)]}"
+                    : id[..Math.Min(12, id.Length)];
+                return new { id, label, recommendation = assessment?.OverallRecommendation ?? "" };
+            }).ToArray();
+
+            var edges = _allNexuses.Select(n => new
+            {
+                id = n.Id,
+                source = n.SourceAssessmentId,
+                target = n.TargetAssessmentId,
+                nexusType = n.NexusType.ToString()
+            }).ToArray();
+
+            try
+            {
+                await JS.InvokeVoidAsync("nexusGraph.init", "cy-container", nodes, edges, _dotNetRef);
+            }
+            catch (JSException ex)
+            {
+                Logger.LogWarning(ex, "Failed to initialise the nexus graph");
+                _graphFailed = true;
+                StateHasChanged();
+            }
+        }
+    }
+
+    [JSInvokable]
+    public void OnGraphNodeClicked(string assessmentId)
+    {
+        _typeFilter = "";
+        _graphFilter = assessmentId;
+        _nexuses = _allNexuses?.Where(n =>
+            n.SourceAssessmentId == assessmentId || n.TargetAssessmentId == assessmentId).ToList();
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnGraphEdgeClicked(string nexusId)
+    {
+        _typeFilter = "";
+        _graphFilter = nexusId;
+        _nexuses = _allNexuses?.Where(n => n.Id == nexusId).ToList();
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnGraphBackgroundClicked()
+    {
+        await ClearGraphFilter();
+    }
+
+    private async Task ClearGraphFilter()
+    {
+        _typeFilter = "";
+        _graphFilter = "";
+        _nexuses = _allNexuses;
+        try { await JS.InvokeVoidAsync("nexusGraph.resetGraph"); } catch { }
+        StateHasChanged();
+    }
+
+    private async Task OnFilterChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString();
+        _typeFilter = value ?? "";
+        _graphFilter = "";
+        try { await JS.InvokeVoidAsync("nexusGraph.resetGraph"); } catch { }
+        if (string.IsNullOrEmpty(value))
+        {
+            _nexuses = _allNexuses;
+        }
+        else if (Enum.TryParse<NexusType>(value, out var nexusType))
+        {
+            _nexuses = _allNexuses?.Where(n => n.NexusType == nexusType).ToList();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("nexusGraph.destroy");
+        }
+        catch (InvalidOperationException) { /* JS interop not available during prerender */ }
+        catch (JSDisconnectedException) { /* Circuit disconnected */ }
+        _dotNetRef?.Dispose();
+    }
+}

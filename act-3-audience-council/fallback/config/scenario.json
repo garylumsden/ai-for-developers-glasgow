@@ -1,0 +1,58 @@
+{
+  "branding": {
+    "organisation": "Fictional Glasgow Software Team",
+    "appName": "The Whitespace Jury",
+    "tagline": "Formatting disputes, finally settled.",
+    "emblem": "⌨️"
+  },
+  "groundingDomains": [],
+  "council": {
+    "chair": {
+      "id": "chair",
+      "name": "The Senior Maintainer",
+      "role": "Delivers a practical final ruling",
+      "tier": "Synthesis",
+      "promptFile": "chair.md"
+    },
+    "moderator": {
+      "id": "moderator",
+      "name": "The Linter",
+      "role": "Keeps the formatting argument moving",
+      "tier": "Fast",
+      "promptFile": "moderator.md"
+    },
+    "nexusAnalyst": {
+      "id": "nexus-analyst",
+      "name": "The Git Historian",
+      "role": "Connects this ruling to earlier style decisions",
+      "tier": "Synthesis",
+      "promptFile": "nexus-analyst.md"
+    },
+    "members": [
+      {
+        "id": "tab-traditionalist",
+        "name": "The Tab Traditionalist",
+        "role": "Keyboard efficiency",
+        "description": "Argues that one keypress should create one indentation level.",
+        "tier": "Reasoning",
+        "promptFile": "tab-traditionalist.md"
+      },
+      {
+        "id": "space-purist",
+        "name": "The Space Purist",
+        "role": "Portable rendering",
+        "description": "Argues for identical layout in every editor and review surface.",
+        "tier": "Reasoning",
+        "promptFile": "space-purist.md"
+      },
+      {
+        "id": "formatter-fan",
+        "name": "The Formatter Fan",
+        "role": "Automation",
+        "description": "Does not care which whitespace wins if the formatter removes the debate.",
+        "tier": "Reasoning",
+        "promptFile": "formatter-fan.md"
+      }
+    ]
+  }
+}

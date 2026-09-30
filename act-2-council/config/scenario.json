@@ -1,0 +1,145 @@
+{
+  "branding": {
+    "organisation": "Glasgow Azure User Group",
+    "appName": "The Glasgow Developer Council",
+    "tagline": "Tech decisions, deliberated.",
+    "emblem": "🏛️"
+  },
+  "groundingDomains": [
+    "learn.microsoft.com"
+  ],
+  "mcpServers": [
+    {
+      "id": "council-tools",
+      "transport": "http",
+      "url": "http://127.0.0.1:5199/mcp",
+      "foundryUrl": "${COUNCIL_TOOLS_PUBLIC_URL}",
+      "auth": "none"
+    },
+    {
+      "id": "github",
+      "transport": "http",
+      "url": "https://api.githubcopilot.com/mcp/readonly",
+      "auth": "env-token",
+      "tokenEnv": "GITHUB_MCP_TOKEN",
+      "optional": true
+    }
+  ],
+  "mcpPolicy": {
+    "maxCallsPerTurn": 2,
+    "timeoutSeconds": 8
+  },
+  "council": {
+    "chair": {
+      "id": "chair",
+      "name": "The Convener",
+      "role": "Fair, a touch theatrical; delivers a clear verdict with reasons",
+      "tier": "Synthesis",
+      "promptFile": "chair.md"
+    },
+    "moderator": {
+      "id": "moderator",
+      "name": "The Referee",
+      "role": "Brisk; cuts off waffle; keeps rounds short",
+      "tier": "Fast",
+      "promptFile": "moderator.md"
+    },
+    "nexusAnalyst": {
+      "id": "nexus-analyst",
+      "name": "The Archivist",
+      "role": "Connects today's ruling to earlier ones",
+      "tier": "Synthesis",
+      "promptFile": "nexus-analyst.md"
+    },
+    "members": [
+      {
+        "id": "vibe-coder",
+        "name": "The Vibe Coder",
+        "role": "Developer velocity",
+        "description": "Eager junior developer. \"Just ship it.\" Champions developer experience, speed and flow; impatient with process.",
+        "tier": "Reasoning",
+        "knowledgeDomains": [
+          "docs.github.com",
+          "github.blog"
+        ],
+        "promptFile": "vibe-coder.md",
+        "mcpTools": [
+          {
+            "server": "council-tools",
+            "allow": [
+              "get_repo_activity"
+            ]
+          },
+          {
+            "server": "github",
+            "allow": [
+              "get_file_contents",
+              "search_code"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "dr-no",
+        "name": "Dr No",
+        "role": "Security and data protection",
+        "description": "Suspicious, loves a policy, quotes regulators. Scrutinises data flows, model approval, supply chain and where prompts and code go.",
+        "tier": "Reasoning",
+        "knowledgeDomains": [
+          "ncsc.gov.uk",
+          "ico.org.uk",
+          "learn.microsoft.com"
+        ],
+        "promptFile": "dr-no.md",
+        "mcpTools": [
+          {
+            "server": "council-tools",
+            "allow": [
+              "check_model_register"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "bean-counter",
+        "name": "The Bean Counter",
+        "role": "FinOps",
+        "description": "Dry; counts every token and every watt. Scrutinises run cost, hardware cost and licensing.",
+        "tier": "Reasoning",
+        "knowledgeDomains": [
+          "azure.microsoft.com",
+          "learn.microsoft.com"
+        ],
+        "promptFile": "bean-counter.md",
+        "mcpTools": [
+          {
+            "server": "council-tools",
+            "allow": [
+              "get_azure_model_price",
+              "compare_run_costs"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "greybeard",
+        "name": "The Greybeard",
+        "role": "Principal engineer",
+        "description": "\"Seen it all since COBOL.\" Scrutinises maintainability, support lifecycles, operability, and who fixes it at 3am.",
+        "tier": "Reasoning",
+        "knowledgeDomains": [
+          "learn.microsoft.com"
+        ],
+        "promptFile": "greybeard.md",
+        "mcpTools": [
+          {
+            "server": "council-tools",
+            "allow": [
+              "get_product_lifecycle"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

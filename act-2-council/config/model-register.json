@@ -1,0 +1,44 @@
+[
+  {
+    "model": "ibm/granite-4-h-tiny",
+    "provider": "lmstudio",
+    "hosting": "developer-workstation",
+    "approvedDataClassifications": [
+      "public",
+      "internal",
+      "synthetic"
+    ],
+    "status": "conditional",
+    "conditions": "Use through Copilocal offline mode. Keep the model and runtime patched. Do not use customer or restricted data."
+  },
+  {
+    "model": "gpt-5.4",
+    "provider": "azure-foundry",
+    "hosting": "cloud",
+    "approvedDataClassifications": [
+      "public",
+      "internal"
+    ],
+    "status": "approved",
+    "conditions": "Use the approved tenant, identity-based authentication, and repository controls."
+  },
+  {
+    "model": "qwen2.5-coder-7b-instruct-openvino-npu",
+    "provider": "foundry-local",
+    "hosting": "developer-npu",
+    "approvedDataClassifications": [
+      "public",
+      "synthetic"
+    ],
+    "status": "not-approved",
+    "conditions": "The current 4,224-token compiled context is below the Copilot minimum."
+  },
+  {
+    "model": "mcp",
+    "provider": "protocol",
+    "hosting": "not-a-service",
+    "approvedDataClassifications": [],
+    "status": "not-applicable",
+    "conditions": "MCP is a protocol, not a hosted service. Assess each server, tool, data flow, and authentication path."
+  }
+]

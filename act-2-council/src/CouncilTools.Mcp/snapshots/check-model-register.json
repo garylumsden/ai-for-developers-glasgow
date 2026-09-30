@@ -1,0 +1,21 @@
+{
+  "source": "live",
+  "retrievedAt": "2026-09-24T22:48:13.3421097+00:00",
+  "data": {
+    "query": "lmstudio/ibm/granite-4-h-tiny",
+    "match": {
+      "model": "ibm/granite-4-h-tiny",
+      "provider": "lmstudio",
+      "hosting": "developer-workstation",
+      "approvedDataClassifications": [
+        "public",
+        "internal",
+        "synthetic"
+      ],
+      "status": "conditional",
+      "conditions": "Use through Copilocal offline mode. Keep the model and runtime patched. Do not use customer or restricted data."
+    },
+    "note": "This fictional register is demo data. MCP is a protocol, not a hosted service."
+  },
+  "warning": null
+}

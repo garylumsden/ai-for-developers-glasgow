@@ -1,0 +1,353 @@
+{
+  "source": "live",
+  "retrievedAt": "2026-09-24T22:48:10.9824213+00:00",
+  "data": {
+    "model": "gpt-5.4",
+    "region": "uksouth",
+    "meters": [
+      {
+        "meterName": "5.4 longco batch cd inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 longco batch cd inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 0.25,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 mini Opt Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 mini Opt Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 4.5,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 nano Inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 nano Inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 0.2,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 pro longco opt Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 pro longco opt Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 270.0,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 nano cd Inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 nano cd Inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 0.02,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 pp inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 pp inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 5.0,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 nano Batch Opt Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 nano Batch Opt Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 0.625,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 longco batch inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 longco batch inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 2.5,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 mini pp cd Inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 mini pp cd Inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 0.15,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 pro longco batch inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 pro longco batch inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 30.0,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 pro Batch opt Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 pro Batch opt Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 90.0,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 mini Batch cd Inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 mini Batch cd Inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 0.0375,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 mini cd Inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 mini cd Inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 0.075,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 longco opt Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 longco opt Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 22.5,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 pro longco inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 pro longco inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 60.0,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 pro inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 pro inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 30.0,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 cd inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 cd inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 0.25,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 2.5,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 mini pp Inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 mini pp Inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 1.5,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 mini pp Opt Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 mini pp Opt Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 9.0,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 mini Batch Inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 mini Batch Inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 0.375,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 nano Batch Inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 nano Batch Inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 0.1,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 mini Inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 mini Inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 0.75,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 pp cd inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 pp cd inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 0.5,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 nano Opt Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 nano Opt Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 1.25,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 pro opt Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 pro opt Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 180.0,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 nano Batch cd Inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 nano Batch cd Inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 0.01,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 mini Batch Opt Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 mini Batch Opt Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 2.25,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 pro Batch inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 pro Batch inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 15.0,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 longco inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 longco inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 5.0,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 Batch inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 Batch inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 1.25,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 longco cd inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 longco cd inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 0.5,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 pp opt Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 pp opt Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 30.0,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 Batch opt Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 Batch opt Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 7.5,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 pro longco batch opt Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 pro longco batch opt Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 135.0,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 longco batch opt Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 longco batch opt Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 11.25,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 opt Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 opt Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 15.0,
+        "unitOfMeasure": "1M"
+      },
+      {
+        "meterName": "5.4 Batch cd inp Gl 1M Tokens",
+        "productName": "Azure OpenAI GPT5",
+        "skuName": "5.4 Batch cd inp Gl",
+        "region": "uksouth",
+        "currency": "USD",
+        "unitPrice": 0.13,
+        "unitOfMeasure": "1M"
+      }
+    ]
+  },
+  "warning": null
+}

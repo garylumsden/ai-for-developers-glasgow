@@ -1,0 +1,5 @@
+[allowlist]
+description = "Public Azure built-in role definition identifiers are not secrets."
+regexes = [
+  '''keyVaultSecretsUserRoleId["']?\s*[:=]\s*["']?[0-9a-fA-F-]{36}'''
+]

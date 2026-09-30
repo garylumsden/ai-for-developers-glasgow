@@ -1,0 +1,15 @@
+{
+  "localCost": {
+    "currency": "USD",
+    "hardwarePurchasePrice": 1800,
+    "amortizedTasks": 100000,
+    "workstationWatts": 250,
+    "electricityPricePerKwh": 0.2
+  },
+  "defaults": {
+    "azureRegion": "uksouth",
+    "githubRepository": "garylumsden/copilocal",
+    "lifecycleProduct": "dotnet",
+    "lifecycleVersion": "10"
+  }
+}

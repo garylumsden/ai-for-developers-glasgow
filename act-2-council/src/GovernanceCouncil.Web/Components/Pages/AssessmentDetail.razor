@@ -1,0 +1,488 @@
+@page "/assessment/{AssessmentId}"
+@using GovernanceCouncil.Core.Interfaces
+@using GovernanceCouncil.Core.Models
+@using Markdig
+@inject IAssessmentStore AssessmentStore
+@inject INexusStore NexusStore
+@inject IDeliberationStore DeliberationStore
+@inject ILogger<AssessmentDetail> Logger
+@rendermode InteractiveServer
+
+<PageTitle>Assessment — @AssessmentId</PageTitle>
+
+<div class="assessment-detail-page">
+    <nav aria-label="Breadcrumb" class="assessment-breadcrumb">
+        <a href="/assessments">Assessments</a>
+        <span aria-hidden="true">/</span>
+        <span aria-current="page">Assessment detail</span>
+    </nav>
+
+    @if (_loadFailed)
+    {
+        <header class="gc-page-header"><h1 class="gc-page-title">Assessment unavailable</h1></header>
+        <div class="gc-empty-state" role="alert">
+            <h2>This assessment could not be loaded</h2>
+            <p>It may no longer be available, or the service may be temporarily unavailable. Try again or return to the assessment list.</p>
+            <a href="/assessment/@AssessmentId" class="btn btn-outline-secondary" data-enhance-nav="false">Try again</a>
+        </div>
+    }
+    else if (_assessment is null)
+    {
+        <header class="gc-page-header"><h1 class="gc-page-title">Assessment</h1></header>
+        <p class="gc-meta" role="status">Loading assessment…</p>
+    }
+    else
+    {
+        <header class="gc-page-header">
+            <div class="assessment-heading">
+                <h1 class="gc-page-title">@_assessment.DossierTitle</h1>
+                <p class="gc-page-description">Assessment @_assessment.AssessmentId</p>
+            </div>
+            <div class="gc-action-group">
+                <a href="/dossier/@_assessment.DossierId" class="btn btn-outline-secondary">View document</a>
+            </div>
+        </header>
+
+        <dl class="assessment-record-meta">
+            <div>
+                <dt>Overall recommendation</dt>
+                <dd><span class="gc-pill @PositionBadgeClass(_assessment.OverallRecommendation)">@_assessment.OverallRecommendation</span></dd>
+            </div>
+            <div><dt>Status</dt><dd>@_assessment.Status</dd></div>
+            <div><dt>Review date</dt><dd>@_assessment.ReviewDate.ToString("dd MMM yyyy")</dd></div>
+        </dl>
+
+        <nav class="gc-toolbar assessment-section-nav" aria-label="Assessment sections">
+            <a href="#assessment-decision">Decision</a>
+            <a href="#assessment-votes">Final votes</a>
+            <a href="#assessment-contributions">Member contributions</a>
+            <a href="#assessment-dissent">Dissent</a>
+            <a href="#assessment-risks">Risks</a>
+            <a href="#assessment-nexuses">Nexuses</a>
+            <a href="#assessment-minutes">Minutes</a>
+        </nav>
+
+        <section id="assessment-decision" class="assessment-section" aria-labelledby="assessment-decision-heading" tabindex="-1">
+            <div class="gc-section-header"><h2 id="assessment-decision-heading">Chair's assessment</h2></div>
+            @if (!string.IsNullOrEmpty(_assessment.ChairSummary))
+            {
+                <div class="gc-surface assessment-decision">
+                    <p class="assessment-narrative">@_assessment.ChairSummary</p>
+                </div>
+            }
+            else
+            {
+                <p class="gc-meta">No chair summary recorded.</p>
+            }
+
+            <h3 class="assessment-subheading">Conditions</h3>
+            @if (_assessment.Conditions.Any())
+            {
+                <ol class="assessment-conditions">
+                    @foreach (var condition in _assessment.Conditions)
+                    {
+                        <li>@condition</li>
+                    }
+                </ol>
+            }
+            else
+            {
+                <p class="gc-meta">No conditions attached.</p>
+            }
+        </section>
+
+        <section id="assessment-votes" class="assessment-section" aria-labelledby="assessment-votes-heading" tabindex="-1">
+            <div class="gc-section-header"><h2 id="assessment-votes-heading">Final member votes</h2></div>
+            <p class="gc-meta">The formal positions recorded in this assessment. Earlier statements in the minutes may differ from these final votes.</p>
+            @if (_assessment.Votes.Any())
+            {
+                <ul class="gc-surface assessment-record-list" aria-label="Final member votes">
+                    @foreach (var vote in _assessment.Votes)
+                    {
+                        <li class="gc-list-row assessment-member-row" @key="vote.Key">
+                            <div class="assessment-member-heading">
+                                <h3>@GetDisplayName(vote.Key)</h3>
+                                <span class="gc-pill @PositionBadgeClass(NormalisePosition(vote.Value.Position))">@NormalisePosition(vote.Value.Position)</span>
+                            </div>
+                            <p class="assessment-narrative">@vote.Value.Summary</p>
+                        </li>
+                    }
+                </ul>
+            }
+            else
+            {
+                <p class="gc-meta">No member votes recorded.</p>
+            }
+        </section>
+
+        <section id="assessment-contributions" class="assessment-section" aria-labelledby="assessment-contributions-heading" tabindex="-1">
+            <div class="gc-section-header"><h2 id="assessment-contributions-heading">Member contributions</h2></div>
+            <p class="gc-meta">The chair's summary of each member's position, arguments, and concerns during deliberation.</p>
+            @if (_assessment.DeliberationSummary is not null && _assessment.DeliberationSummary.Count > 0)
+            {
+                <ul class="gc-surface assessment-record-list" aria-label="Member contribution summaries">
+                    @foreach (var contribution in _assessment.DeliberationSummary)
+                    {
+                        <li class="gc-list-row assessment-member-row">
+                            <div class="assessment-member-heading">
+                                <h3>@GetDisplayName(contribution.Member)</h3>
+                                <span class="gc-pill @PositionBadgeClass(NormalisePosition(contribution.Position))">@NormalisePosition(contribution.Position)</span>
+                            </div>
+                            <p class="assessment-narrative">@contribution.KeyPoints</p>
+                            @{
+                                var memberToolCalls = _assessment.ToolCalls?
+                                    .Where(call => IsSameMember(call.Member, contribution.Member))
+                                    .ToList();
+                            }
+                            @if (memberToolCalls is { Count: > 0 })
+                            {
+                                <div class="assessment-tool-calls">
+                                    <h4>🔧 Tool calls</h4>
+                                    @foreach (var toolCall in memberToolCalls)
+                                    {
+                                        <details class="assessment-tool-call">
+                                            <summary>
+                                                <strong>@toolCall.Tool</strong>
+                                                <span class="gc-pill">@toolCall.Source</span>
+                                                <span>@toolCall.Summary</span>
+                                            </summary>
+                                            <pre>@toolCall.Json</pre>
+                                        </details>
+                                    }
+                                </div>
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+            else
+            {
+                <p class="gc-meta">No member contribution summaries recorded.</p>
+            }
+        </section>
+
+        <section id="assessment-dissent" class="assessment-section" aria-labelledby="assessment-dissent-heading" tabindex="-1">
+            <div class="gc-section-header"><h2 id="assessment-dissent-heading">Dissent</h2></div>
+            @if (_assessment.Dissent.Any())
+            {
+                <ul class="gc-surface assessment-record-list" aria-label="Dissenting opinions">
+                    @foreach (var dissent in _assessment.Dissent)
+                    {
+                        <li class="gc-list-row assessment-member-row">
+                            <h3>@GetDisplayName(dissent.Member)</h3>
+                            <p class="assessment-narrative">@dissent.Concern</p>
+                        </li>
+                    }
+                </ul>
+            }
+            else
+            {
+                <p class="gc-meta">No dissenting opinions.</p>
+            }
+        </section>
+
+        <section id="assessment-risks" class="assessment-section" aria-labelledby="assessment-risks-heading" tabindex="-1">
+            <div class="gc-section-header"><h2 id="assessment-risks-heading">Risks and mitigations</h2></div>
+            @if (_assessment.Risks.Any())
+            {
+                <ul class="gc-surface assessment-record-list" aria-label="Risks and mitigations">
+                    @foreach (var risk in _assessment.Risks)
+                    {
+                        <li class="gc-list-row assessment-risk-row">
+                            <h3><span class="gc-pill @RiskBadgeClass(risk.Category)">@risk.Category</span></h3>
+                            <dl class="assessment-risk-detail">
+                                <div><dt>Description</dt><dd class="assessment-narrative">@risk.Description</dd></div>
+                                <div><dt>Mitigation</dt><dd class="assessment-narrative">@risk.Mitigation</dd></div>
+                            </dl>
+                        </li>
+                    }
+                </ul>
+            }
+            else
+            {
+                <p class="gc-meta">No risks identified.</p>
+            }
+        </section>
+
+        <section id="assessment-nexuses" class="assessment-section" aria-labelledby="assessment-nexuses-heading" tabindex="-1">
+            <div class="gc-section-header">
+                <h2 id="assessment-nexuses-heading">Related nexuses</h2>
+                <a href="/nexus">Open explorer</a>
+            </div>
+            @if (_nexusesFailed)
+            {
+                <p class="gc-meta" role="alert">Related nexuses could not be loaded. Reload this page to try again, or open the explorer.</p>
+            }
+            else if (_nexuses is null)
+            {
+                <p class="gc-meta" role="status">Loading related nexuses…</p>
+            }
+            else if (!_nexuses.Any())
+            {
+                <p class="gc-meta">No nexuses found for this assessment.</p>
+            }
+            else
+            {
+                <ul class="gc-surface assessment-record-list" aria-label="Related nexuses">
+                    @foreach (var nexus in _nexuses)
+                    {
+                        var relatedId = nexus.SourceAssessmentId == AssessmentId ? nexus.TargetAssessmentId : nexus.SourceAssessmentId;
+                        <li class="gc-list-row assessment-nexus-row" @key="nexus.Id">
+                            <div class="assessment-member-heading">
+                                <h3><a href="/nexus/@nexus.Id/@nexus.SourceAssessmentId">@nexus.NexusType</a></h3>
+                                <span class="gc-meta">Confidence: @nexus.Confidence</span>
+                            </div>
+                            <p class="assessment-narrative">@nexus.Summary</p>
+                            <p class="gc-meta assessment-related-link">Related assessment: <a href="/assessment/@relatedId">@relatedId</a></p>
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+
+        <section id="assessment-minutes" class="assessment-section" aria-labelledby="assessment-minutes-heading" tabindex="-1">
+            <div class="gc-section-header"><h2 id="assessment-minutes-heading">Minutes</h2></div>
+            @if (_minutesFailed)
+            {
+                <p class="gc-meta" role="alert">The minutes could not be loaded. Reload this page to try again. The assessment above remains available.</p>
+            }
+            else if (_transcript is not null && _transcript.Count > 0)
+            {
+                var speakers = _transcript
+                    .Where(e => !IsModeratorRouting(e) && !IsNexusAnalyst(e))
+                    .Select(e => GetDisplayName(e.AgentName))
+                    .Distinct()
+                    .ToList();
+
+                <p class="gc-meta">Read the recorded discussion, including initial positions and subsequent contributions. Final votes are recorded separately above.</p>
+                <div class="gc-toolbar assessment-speaker-filter" role="group" aria-label="Filter minutes by speaker">
+                    <span class="gc-meta">Speaker</span>
+                    <button type="button" class="btn btn-sm @(_minutesFilter == "" ? "btn-primary" : "btn-outline-secondary")"
+                            aria-pressed="@(_minutesFilter == "")" aria-controls="assessment-transcript" @onclick='() => _minutesFilter = ""'>All speakers</button>
+                    @foreach (var speaker in speakers)
+                    {
+                        var selectedSpeaker = speaker;
+                        <button type="button" class="btn btn-sm @(_minutesFilter == selectedSpeaker ? "btn-primary" : "btn-outline-secondary")"
+                                aria-pressed="@(_minutesFilter == selectedSpeaker)" aria-controls="assessment-transcript" @onclick="() => _minutesFilter = selectedSpeaker">@selectedSpeaker</button>
+                    }
+                </div>
+                <p class="gc-meta" role="status">@(string.IsNullOrEmpty(_minutesFilter) ? "Showing all speakers" : $"Showing {_minutesFilter}")</p>
+
+                <div id="assessment-transcript" class="assessment-transcript">
+                    @{ var turn = 1; }
+                    @foreach (var entry in _transcript)
+                    {
+                        var isChair = IsAgent(entry.AgentName, CouncilMembers.Chair.Id);
+                        var displayName = GetDisplayName(entry.AgentName);
+                        var isAssessment = entry.Content.Contains("overallRecommendation");
+
+                        if (IsModeratorRouting(entry))
+                        {
+                            if (string.IsNullOrEmpty(_minutesFilter))
+                            {
+                                var invitedMember = ResolveInvitedMember(entry.Content);
+                                <p class="gc-meta assessment-routing">@GetDisplayName(CouncilMembers.Moderator.Id) invited @invitedMember to contribute</p>
+                            }
+                            turn++;
+                            continue;
+                        }
+                        if (IsNexusAnalyst(entry))
+                        {
+                            turn++;
+                            continue;
+                        }
+                        if (!string.IsNullOrEmpty(_minutesFilter) && displayName != _minutesFilter)
+                        {
+                            turn++;
+                            continue;
+                        }
+
+                        <article class="assessment-turn">
+                            <div class="gc-meta assessment-turn-number">Turn @turn</div>
+                            <div class="assessment-turn-content">
+                                <div class="assessment-member-heading">
+                                    <h3>@displayName</h3>
+                                    @if (isAssessment)
+                                    {
+                                        <span class="gc-pill badge-abstain">Final assessment</span>
+                                    }
+                                </div>
+                                @if (isChair && isAssessment)
+                                {
+                                    <p class="gc-meta">Final assessment produced — <a href="#assessment-decision">read the decision above</a>.</p>
+                                }
+                                else
+                                {
+                                    <div class="prose assessment-minutes-prose">@((MarkupString)Markdown.ToHtml(entry.Content, _mdPipeline))</div>
+                                }
+                            </div>
+                        </article>
+                        turn++;
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="gc-meta">No conversation transcript available for this assessment.</p>
+            }
+        </section>
+
+        <footer class="gc-action-group assessment-footer">
+            <a href="/assessments" class="btn btn-outline-secondary">Back to assessments</a>
+            <a href="/" class="btn btn-outline-secondary">Back to dashboard</a>
+        </footer>
+    }
+</div>
+
+@code {
+    [Parameter] public string AssessmentId { get; set; } = "";
+
+    private static readonly MarkdownPipeline _mdPipeline = new MarkdownPipelineBuilder()
+        .UseAdvancedExtensions().DisableHtml().Build();
+
+    private Assessment? _assessment;
+    private IReadOnlyList<Nexus>? _nexuses;
+    private List<TranscriptEntry>? _transcript;
+    private string _minutesFilter = "";
+    private bool _loadFailed;
+    private bool _nexusesFailed;
+    private bool _minutesFailed;
+
+    private static readonly string[] GuidPrefixes =
+    [
+        "e0500384-", "6342d1d2-", "5587c87d-", "61ecc121-",
+        "5c7d94df-", "c65237ae-", "21453c27-", "232f7239-"
+    ];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _assessment = null;
+        _nexuses = null;
+        _transcript = null;
+        _minutesFilter = "";
+        _loadFailed = false;
+        _nexusesFailed = false;
+        _minutesFailed = false;
+
+        try
+        {
+            _assessment = await AssessmentStore.GetAsync(AssessmentId);
+            if (_assessment is null)
+            {
+                _loadFailed = true;
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to load assessment {AssessmentId}", AssessmentId);
+            _loadFailed = true;
+            return;
+        }
+
+        try { _nexuses = await NexusStore.ListForAssessmentAsync(AssessmentId); }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to load related nexuses for assessment {AssessmentId}", AssessmentId);
+            _nexusesFailed = true;
+        }
+
+        try
+        {
+            var delib = await DeliberationStore.GetOrDefaultAsync(_assessment.DeliberationId);
+            _transcript = delib?.Transcript;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Failed to load minutes for assessment {AssessmentId}", AssessmentId);
+            _minutesFailed = true;
+        }
+    }
+
+    private static string NormaliseAgentName(string agentName) =>
+        agentName.EndsWith("-af", StringComparison.OrdinalIgnoreCase) ? agentName[..^3] : agentName;
+
+    private static string GetDisplayName(string? agentName)
+    {
+        if (string.IsNullOrWhiteSpace(agentName)) return "Unknown";
+        var member = CouncilMembers.ByAgentName(NormaliseAgentName(agentName));
+        return string.IsNullOrWhiteSpace(member?.Name) ? agentName : member.Name;
+    }
+
+    private static bool IsSameMember(string left, string right)
+    {
+        static string ResolveId(string value)
+        {
+            var normalised = NormaliseAgentName(value);
+            var byAgentName = CouncilMembers.ByAgentName(normalised);
+            if (byAgentName is not null) return byAgentName.Id;
+            var byDisplayName = CouncilMembers.All.FirstOrDefault(member =>
+                member.Name.Equals(value, StringComparison.OrdinalIgnoreCase));
+            if (byDisplayName is not null) return byDisplayName.Id;
+            return normalised.StartsWith("gc-", StringComparison.OrdinalIgnoreCase)
+                ? normalised[3..]
+                : normalised;
+        }
+        return ResolveId(left).Equals(ResolveId(right), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsAgent(string? agentName, string memberId) =>
+        agentName is not null && string.Equals(
+            CouncilMembers.ByAgentName(NormaliseAgentName(agentName))?.Id,
+            memberId, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsModeratorRouting(TranscriptEntry entry) =>
+        IsAgent(entry.AgentName, CouncilMembers.Moderator.Id)
+        || entry.AgentName == "gc-moderator"
+        || entry.Content.Contains("nextSpeaker")
+        || GuidPrefixes.Any(p => entry.Content.Contains(p));
+
+    private static bool IsNexusAnalyst(TranscriptEntry entry) =>
+        IsAgent(entry.AgentName, CouncilMembers.NexusAnalyst.Id)
+        || (entry.AgentName is not null && entry.AgentName.StartsWith("gc-nexus", StringComparison.OrdinalIgnoreCase));
+
+    private static string ResolveInvitedMember(string content)
+    {
+        // Routing may be stored as JSON or as a plain-text moderator event.
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(content);
+            if (document.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
+                && document.RootElement.TryGetProperty("nextSpeaker", out var speaker)
+                && speaker.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
+                var key = speaker.GetString() ?? "";
+                if (key.Equals("done", StringComparison.OrdinalIgnoreCase)
+                    || key.Equals("signal-done", StringComparison.OrdinalIgnoreCase))
+                    return "— end of deliberation —";
+                if (!string.IsNullOrWhiteSpace(key)) return GetDisplayName(key);
+            }
+        }
+        catch (System.Text.Json.JsonException) { /* Legacy text routing event. */ }
+
+        var member = CouncilMembers.DeliberationMembers.FirstOrDefault(m =>
+            !string.IsNullOrWhiteSpace(m.Id) && content.Contains(m.Id, StringComparison.OrdinalIgnoreCase));
+        if (member is not null) return GetDisplayName(member.Id);
+        return content.Contains("done", StringComparison.OrdinalIgnoreCase)
+            ? "— end of deliberation —" : "next member";
+    }
+
+    private static string NormalisePosition(string? position) => (position ?? "").ToLowerInvariant() switch
+    {
+        "support" => "Approve",
+        "support with conditions" => "Approve with Conditions",
+        var p when p.StartsWith("support") && p.Contains("condition") => "Approve with Conditions",
+        _ => string.IsNullOrWhiteSpace(position) ? "Not recorded" : position
+    };
+
+    private static string PositionBadgeClass(string position) => UiStyles.StanceClass(position);
+
+    private static string RiskBadgeClass(string category) => category.ToLowerInvariant() switch
+    {
+        "security" => "badge-oppose",
+        "data protection" => "badge-conditions",
+        "financial" => "badge-defer",
+        "delivery" => "badge-defer",
+        _ => "badge-oppose"
+    };
+}

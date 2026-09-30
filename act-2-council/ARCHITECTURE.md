@@ -1,0 +1,371 @@
+# Agent Council — Azure Architecture
+
+## Overview
+
+```mermaid
+graph LR
+    User["👤 User"] --> Blazor["Blazor Server<br/>.NET 10"]
+    Blazor --> Foundry["Microsoft Foundry<br/>9 Prompt Agents<br/>2 Workflows<br/>Memory"]
+    Blazor --> Cosmos[("Cosmos DB<br/>Assessments · Nexuses<br/>Documents · Deliberations")]
+    Blazor --> Blob[("Blob Storage<br/>Document files")]
+    Foundry --> GPT["gpt-4.1"]
+    Foundry --> Memory["gc-deliberation-memory"]
+    Blazor -.-> SignalR["SignalR<br/>Live feedback"]
+    Blazor -.-> AppInsights["App Insights"]
+
+    style User fill:#4A90D9,color:#fff
+    style Blazor fill:#2D7D46,color:#fff
+    style Foundry fill:#7B2D8E,color:#fff
+    style Cosmos fill:#D4760A,color:#fff
+    style Blob fill:#D4760A,color:#fff
+    style GPT fill:#9B59B6,color:#fff
+    style Memory fill:#9B59B6,color:#fff
+    style SignalR fill:#2D7D46,color:#fff
+    style AppInsights fill:#1A7A7A,color:#fff
+```
+
+> **Runtime boundary**: The Blazor Server app runs only on the developer workstation. It is not container-hosted, web-hosted, or a Foundry Hosted Agent. The server accepts loopback requests only. All Azure resources are provisioned through Bicep (`azd up`). The local process uses the signed-in Microsoft Entra user through `DefaultAzureCredential`; there are no service keys.
+
+## Knowledge and read-only tool path
+
+The council keeps knowledge and actions separate:
+
+* Foundry IQ combines a domain-scoped web knowledge source with the managed-identity
+  `council-knowledge` Blob source.
+* `council-tools` is a loopback .NET 10 Streamable HTTP MCP server.
+* Local MAF attaches only each persona's exact allow-list. The Moderator and Fast bid client receive
+  no MCP tools.
+* Foundry Prompt Agents skip localhost unless `COUNCIL_TOOLS_PUBLIC_URL` supplies a reachable
+  endpoint. Optional environment-token servers are skipped when their token is absent.
+  Their call cap is instruction-only until the hosted MCP boundary can enforce it.
+* MCP results use committed snapshots when a public API is unavailable. Tool calls are persisted on
+  the Assessment and exported to Application Insights with server, tool, member, duration, source,
+  and success tags.
+
+### Optional hosted `council-tools` design
+
+This repository does not deploy the optional host. A production implementation can add an `azd`
+parameter that defaults to `false` and deploys `CouncilTools.Mcp` to Azure Container Apps. Use a
+managed identity, Entra authentication, HTTPS ingress, and an explicit audience. Set
+`COUNCIL_TOOLS_PUBLIC_URL` only after the endpoint passes authentication and allow-list tests.
+Local MAF remains the demo path.
+
+## Detailed Architecture
+
+```mermaid
+graph TB
+    %% =====================================================================
+    %% Styling
+    %% =====================================================================
+    classDef user fill:#4A90D9,stroke:#2C5F8A,color:#fff,stroke-width:2px
+    classDef web fill:#2D7D46,stroke:#1B5E2E,color:#fff,stroke-width:2px
+    classDef foundry fill:#7B2D8E,stroke:#5A1F6A,color:#fff,stroke-width:2px
+    classDef agent fill:#9B59B6,stroke:#7D3C98,color:#fff,stroke-width:1px
+    classDef data fill:#D4760A,stroke:#A35D08,color:#fff,stroke-width:2px
+    classDef monitor fill:#1A7A7A,stroke:#105555,color:#fff,stroke-width:2px
+    classDef identity fill:#C0392B,stroke:#922B21,color:#fff,stroke-width:2px
+    classDef search fill:#2980B9,stroke:#1F618D,color:#fff,stroke-width:2px
+
+    %% =====================================================================
+    %% User & Web Tier
+    %% =====================================================================
+    User["👤 User<br/>(Entra ID authenticated)"]:::user
+
+    subgraph WebTier["Blazor Server App (.NET 10)"]
+        direction TB
+        Blazor["Blazor Server Web App<br/>.NET 10<br/>Dashboard · Document Library<br/>Assessment Detail · Nexus Explorer"]:::web
+        SignalR["SignalR Hub<br/>/hubs/deliberation<br/>Live deliberation feedback"]:::web
+    end
+
+    User -->|"Entra ID auth<br/>Azure AI User role"| Blazor
+    Blazor --- SignalR
+
+    %% =====================================================================
+    %% Microsoft Foundry (new) — AI Services + Project
+    %% =====================================================================
+    subgraph FoundryPlatform["Microsoft Foundry (new)"]
+        direction TB
+
+        AIServices["Azure AI Services<br/>(S0, disableLocalAuth: true)<br/>services.ai.azure.com"]:::foundry
+
+        subgraph ModelDeployments["Model Deployments"]
+            direction LR
+            GPT41["gpt-4.1<br/>(All Council Agents)"]:::agent
+            Embedding["text-embedding-3-small<br/>(Memory embeddings)"]:::agent
+        end
+
+        FoundryProject["Foundry Project<br/>'Agent Council'<br/>(System-assigned MI)"]:::foundry
+
+        subgraph AgentLayer["Prompt Agents (9)"]
+            direction LR
+            Chair["Council Chair"]:::agent
+            CDIO["CDIO"]:::agent
+            CISO["CISO"]:::agent
+            DPO["DPO"]:::agent
+            Finance["Finance"]:::agent
+            Policy["Policy"]:::agent
+            People["People"]:::agent
+            Analyst["Analyst"]:::agent
+            NexusAnalyst["Nexus Analyst"]:::agent
+        end
+
+        subgraph Workflows["Declarative Workflows (CSDL YAML)"]
+            direction LR
+            SeqWF["Sequential Workflow<br/>CDIO→CISO→DPO→Finance<br/>→Policy→People→Analyst→Chair"]:::foundry
+            GCWF["Group Chat Workflow<br/>Moderator-routed<br/>multi-round discussion"]:::foundry
+        end
+
+        Memory["Foundry Memory (preview)<br/>gc-deliberation-memory<br/>9 scoped boundaries"]:::foundry
+
+    end
+
+    Blazor -->|"Azure.AI.Projects SDK<br/>+ REST API<br/>(DefaultAzureCredential)"| FoundryProject
+    FoundryProject --> Workflows
+    Workflows --> AgentLayer
+    AgentLayer --> ModelDeployments
+    AgentLayer --> Memory
+
+
+    %% =====================================================================
+    %% Data Tier
+    %% =====================================================================
+    subgraph DataTier["Data Tier (identity-based auth, zero keys)"]
+        direction TB
+
+        subgraph CosmosDB["Azure Cosmos DB NoSQL (serverless)"]
+            direction LR
+            Assessments[("assessments<br/>/assessmentId")]:::data
+            Nexuses[("nexuses<br/>/sourceAssessmentId")]:::data
+            Documents[("Documents<br/>/DocumentId")]:::data
+            Deliberations[("deliberations<br/>/deliberationId")]:::data
+        end
+
+        subgraph BlobStorage["Azure Blob Storage (no shared keys)"]
+            direction LR
+            BlobOriginal[("Documents-original<br/>PDF · DOCX · HTML")]:::data
+            BlobMarkdown[("Documents-markdown<br/>Converted MD")]:::data
+        end
+    end
+
+    Blazor -->|"Microsoft.Azure.Cosmos<br/>(DefaultAzureCredential)"| CosmosDB
+    Blazor -->|"Azure.Storage.Blobs<br/>(DefaultAzureCredential)"| BlobStorage
+    FoundryProject -->|"Blob Data Contributor"| BlobStorage
+
+    %% =====================================================================
+    %% Search & Knowledge
+    %% =====================================================================
+    SearchService["Azure AI Search (basic)<br/>Semantic search · Indexes"]:::search
+
+    AIServices -->|"Search Index Data R/W<br/>(System MI)"| SearchService
+    SearchService -->|"Cog Services User<br/>(Search MI → AI Services)"| AIServices
+
+    %% =====================================================================
+    %% Monitoring
+    %% =====================================================================
+    subgraph Monitoring["Observability"]
+        direction LR
+        AppInsights["Application Insights<br/>OpenTelemetry<br/>GenAI semantic conventions"]:::monitor
+        LogAnalytics["Log Analytics Workspace<br/>(30-day retention)"]:::monitor
+    end
+
+    Blazor -->|"Traces · Metrics<br/>Distributed tracing"| AppInsights
+    Blazor -->|"MCP call spans"| AppInsights
+    AppInsights --> LogAnalytics
+
+    %% =====================================================================
+    %% Identity
+    %% =====================================================================
+    LocalUser["Signed-in Microsoft Entra user<br/>Azure CLI / Visual Studio"]:::identity
+    DAC["Local Blazor process<br/>DefaultAzureCredential"]:::identity
+    ProjectIdentity["Foundry project<br/>managed identity"]:::identity
+
+    LocalUser -->|"credential discovery"| DAC
+    DAC -.->|"User token + RBAC"| FoundryProject
+    DAC -.->|"User token + RBAC"| AIServices
+    DAC -.->|"User token + RBAC"| CosmosDB
+    DAC -.->|"User token + RBAC"| BlobStorage
+    DAC -.->|"User token + RBAC"| SearchService
+    ProjectIdentity -.->|"Foundry service-to-service RBAC"| AIServices
+    ProjectIdentity -.->|"Foundry service-to-service RBAC"| BlobStorage
+    ProjectIdentity -.->|"Foundry service-to-service RBAC"| SearchService
+```
+
+## RBAC Model
+
+```mermaid
+graph LR
+    classDef principal fill:#4A90D9,stroke:#2C5F8A,color:#fff
+    classDef resource fill:#D4760A,stroke:#A35D08,color:#fff
+    classDef role fill:#2D7D46,stroke:#1B5E2E,color:#fff,font-size:10px
+
+    User["👤 Signed-in local user<br/>(deploying principal)"]:::principal
+    ProjectMI["🤖 Project MI"]:::principal
+    AIServicesMI["🤖 AI Services MI"]:::principal
+    SearchMI["🤖 Search MI"]:::principal
+
+    AIS["AI Services"]:::resource
+    FP["Foundry Project"]:::resource
+    CDB["Cosmos DB"]:::resource
+    SA["Storage Account"]:::resource
+    SS["AI Search"]:::resource
+    LA["Log Analytics"]:::resource
+    AI["App Insights"]:::resource
+
+    User -->|"Cog Services User<br/>Cog Services OpenAI User"| AIS
+    User -->|"AI User<br/>AI Project Manager"| FP
+    User -->|"Data Contributor"| CDB
+    User -->|"Blob Data Owner"| SA
+    User -->|"Search Service Contributor<br/>Index Data Contributor<br/>Index Data Reader"| SS
+    User -->|"Log Analytics Contributor"| LA
+    User -->|"Monitoring Contributor"| AI
+
+    ProjectMI -->|"AI User"| FP
+    ProjectMI -->|"Cog Services User"| AIS
+    ProjectMI -->|"Blob Data Contributor"| SA
+    ProjectMI -->|"Data Contributor"| CDB
+    ProjectMI -->|"Search Service Contributor<br/>Index Data Contributor<br/>Index Data Reader"| SS
+
+    AIServicesMI -->|"Blob Data Contributor"| SA
+    AIServicesMI -->|"Search Service Contributor<br/>Index Data Contributor<br/>Index Data Reader"| SS
+    AIServicesMI -->|"Data Contributor"| CDB
+
+    SearchMI -->|"Cog Services User"| AIS
+```
+
+## Deployment Model
+
+```mermaid
+graph TB
+    classDef infra fill:#7B2D8E,stroke:#5A1F6A,color:#fff
+    classDef deploy fill:#2D7D46,stroke:#1B5E2E,color:#fff
+
+    Dev["Developer Workstation<br/>Local-only Blazor Server"]:::deploy
+    UserIdentity["Signed-in Entra user<br/>DefaultAzureCredential"]:::deploy
+    AZD["azd up<br/>(Azure Developer CLI)"]:::deploy
+    Bicep["Bicep IaC<br/>main.bicep → resources.bicep<br/>model-deployment.bicep"]:::infra
+
+    UserIdentity -->|"provisions as deploying principal"| AZD
+    Dev -->|"1. Provision infra"| AZD
+    UserIdentity -->|"2. authenticates local process"| Dev
+    AZD --> Bicep
+    Bicep -->|"Creates resource group<br/>rg-{environmentName}"| RG["Azure Resource Group"]:::infra
+
+    subgraph RG_Contents["Resource Group Contents"]
+        direction LR
+        R1["AI Services (S0)"]:::infra
+        R2["Foundry Project"]:::infra
+        R3["gpt-4.1 deployment"]:::infra
+        R5["text-embedding-3-small"]:::infra
+        R6["Cosmos DB (serverless)"]:::infra
+        R7["Storage Account"]:::infra
+        R8["AI Search (basic)"]:::infra
+        R9["App Insights"]:::infra
+        R10["Log Analytics"]:::infra
+    end
+
+    RG --> RG_Contents
+    Dev -->|"3. user-token requests<br/>over Azure SDKs"| RG_Contents
+```
+
+The process binds to loopback and rejects non-loopback requests with HTTP 403. Do not place it behind
+a tunnel, reverse proxy, port-forward, container endpoint, or remote web host. `ALLOW_REMOTE_ACCESS=true`
+is a troubleshooting escape hatch only; it does not add authentication.
+
+The browser user does not authenticate to the app. The server process authenticates to Azure as the
+Microsoft Entra user signed in through Azure CLI or Visual Studio. `DefaultAzureCredential` obtains
+that user's token. The same user should run `azd up`, because the Bicep deployment grants that
+principal the required Foundry, Cosmos DB, Blob Storage, AI Search, monitoring, and RAI policy roles.
+The Foundry project managed identity is a different principal and handles Foundry service-to-service
+access only.
+
+Official guidance: [Foundry tools authentication and authorization using .NET](https://learn.microsoft.com/dotnet/ai/azure-ai-services-authentication).
+
+## Data Flow — Deliberation Lifecycle
+
+### Live debate presentation
+
+`LiveDeliberation.razor` receives SignalR events and updates UI state on the Blazor renderer.
+`DebateChamber.razor` renders two layouts: **Live desk** and **Focus stage**.
+The layouts share the same initial-position cards and chronological chat history.
+Switching layouts does not call the orchestrator.
+
+Initial-position cards stay above the independently scrolling chat and moderator timeline.
+Raised hands appear on member avatars. Hover, keyboard focus, and member inspection expose the supplied reason.
+The latest moderator announcement remains visible while the user reads an earlier response.
+Member and dossier details open within the workspace.
+
+Speaker selection creates a pending message with the known member's avatar and bouncing typing dots.
+The speaking event reuses that message. The engine delivers the complete returned reply in one chunk;
+there is no token streaming. Reduced-motion settings and the pause control stop the animation.
+Readers can pause chat following by scrolling upward and resume with **Return to live**.
+
+Independent assessments retain the `{summary, detail, stance}` contract and full assessment text.
+Debate prompts request the `{summary, detail}` contract.
+Phase-specific user messages request full initial assessments and round replies of at most three sentences.
+Persona system prompts contain no response length requirements.
+The parser extracts `detail`, or `summary` when no detail is available. Otherwise, it retains the returned text.
+The engine preserves paragraphs and Markdown. It does not validate, retry, or discard replies for length or format.
+Empty responses receive an explicit notice. Content-safety blocks remain unchanged.
+The Chair's structured synthesis remains unchanged.
+Per-message `🛠️` details expose recorded grounding and MCP calls, matched to results by call ID.
+Invalid initial assessments receive one format-repair attempt. Remaining failures appear explicitly on their member cards.
+Opening a member or dossier inspector does not pause chat following. Only manual chat scrolling pauses following.
+
+The timeline records calls for hands, bids, speaker selections, supplied selection reasons, and
+status changes. Each entry records its local receipt time and round.
+The UI does not generate or expose internal model reasoning.
+
+Timeline entries exist only in the current view. Reloading does not restore them.
+After reconnecting, the page rejoins the SignalR group and marks the interruption.
+The hub does not replay missed events. Stored completion status remains available through polling.
+The timeline is a live observation aid, not a durable audit log.
+
+```mermaid
+sequenceDiagram
+    participant U as User (Browser)
+    participant B as Blazor Server
+    participant SR as SignalR Hub
+    participant F as Foundry Project
+    participant WF as Workflow (Sequential/GroupChat)
+    participant A as Agents (7 members)
+    participant CH as Council Chair
+    participant NA as Nexus Analyst
+    participant C as Cosmos DB
+    participant BL as Blob Storage
+
+    U->>B: Upload Document (PDF/DOCX/URL/MD)
+    B->>BL: Store original + markdown
+    B->>C: Create Document record
+
+    U->>B: Submit for deliberation
+    B->>C: Create Deliberation (status: Pending)
+    B->>SR: Navigate to /deliberation/{id}/live
+    SR-->>U: Spinner + Document preview
+
+    B->>F: Invoke workflow (Responses API)
+    F->>WF: Execute deliberation
+
+    alt Sequential Mode
+        WF->>A: CDIO → CISO → DPO → Finance → Policy → People → Analyst
+        A-->>WF: Each agent responds (shared conversation)
+    else GroupChat Mode
+        loop Moderated rounds (max 14)
+            WF->>A: Moderator selects next speaker
+            A-->>WF: Member responds
+        end
+    end
+
+    WF->>CH: Chair synthesises all opinions
+    CH-->>WF: Assessment JSON (recommendation, votes, risks)
+    WF-->>F: Workflow complete
+    F-->>B: Assessment response
+
+    B->>C: Persist Assessment + Deliberation (status: Completed)
+    SR-->>U: DeliberationComplete → redirect to Assessment Detail
+
+    B->>F: Invoke Nexus Analyst
+    F->>NA: Compare new assessment vs all prior
+    NA-->>F: Discovered nexuses
+    F-->>B: Nexus results
+    B->>C: Persist Nexuses
+```

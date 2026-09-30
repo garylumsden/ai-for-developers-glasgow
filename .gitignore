@@ -1,0 +1,71 @@
+# Build outputs
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+
+# .NET
+*.dll
+*.exe
+*.pdb
+*.cache
+*.nupkg
+*.snupkg
+project.assets.json
+*.nuget.props
+*.nuget.targets
+*.nuget.g.props
+*.nuget.g.targets
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# VS / VS Code
+.vs/
+.vscode/
+*.rsuser
+
+# NuGet
+packages/
+
+# Environment files (contain secrets)
+.env
+**/.env
+*.env.local
+
+# Azure
+.azure/
+act-2-council/.azure/
+
+# Temporary files
+.tmp/
+.playwright-mcp/
+*.tmp
+*.bak
+*.swp
+*~
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Node (if any)
+node_modules/
+
+# Demo run output
+act-1-pull-the-plug/runs/
+act-1-pull-the-plug/results/results.json
+act-1-pull-the-plug/results/*.lock
+act-1-pull-the-plug/results/results-*.tmp
+act-1-pull-the-plug/results/live/
+act-1-pull-the-plug/results/backups/
+act-3-audience-council/.rehearsal/
+
+# Local validation reports
+**/preflight-report.md

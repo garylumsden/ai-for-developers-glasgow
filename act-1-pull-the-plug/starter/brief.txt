@@ -1,0 +1,21 @@
+GLASGOW SUBWAY SERVICE BOARD
+
+All data is fictional demo data.
+
+Create one self-contained index.html file.
+
+Design brief:
+- Use the heading Glasgow Subway Service Board.
+- State clearly that the board uses fictional demo data.
+- Dark background and high-contrast text
+- CSS can use a style block or inline style
+- No external scripts, styles, fonts, images, or network calls
+
+Show the station, direction, and due text for these arrivals:
+- Buchanan Street | Inner | DUE
+- St Enoch | Outer | 2 min
+- Kelvinbridge | Inner | 4 min
+- Partick | Outer | 6 min
+- Hillhead | Inner | 8 min
+
+Choose the HTML structure and visual design. The audience will judge the result.

@@ -1,0 +1,18 @@
+{
+  "prompt": "Create the fictional Glasgow Subway service board described in brief.txt.\n\nUse the file and shell tools. Do not only return a code sample.\nWork only in the current folder.\nRead brief.txt and create one self-contained index.html file.\nUse no external resource or network call.\nChoose the HTML structure and visual design. Make the board dark and high contrast.\n\nRun: pwsh -NoProfile -File ../../check.ps1 --workspace .\nThe check only confirms that index.html exists and is not empty.\nThe audience will judge the content and design. Do not change the output just to match exact text or markup.",
+  "timeBoxSeconds": 300,
+  "targetSeconds": 210,
+  "local": {
+    "provider": "lmstudio",
+    "model": "ibm/granite-4-h-tiny",
+    "contextLength": 131072,
+    "ttlSeconds": 7200
+  },
+  "cloud": {
+    "model": "gpt-5.4"
+  },
+  "check": {
+    "windows": "pwsh -NoProfile -File ./check.ps1 --workspace ./runs/local",
+    "posix": "bash ./check.sh --workspace ./runs/local"
+  }
+}

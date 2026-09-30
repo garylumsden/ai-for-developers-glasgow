@@ -1,0 +1,58 @@
+[
+  {
+    "label": "local-final-1",
+    "runtime": "local",
+    "provider": "lmstudio",
+    "model": "ibm/granite-4-h-tiny",
+    "startedAt": "2026-09-24T20:21:02.2316049+00:00",
+    "durationSeconds": 155.36,
+    "timedOut": false,
+    "succeeded": true,
+    "inputTokens": 97182,
+    "outputTokens": 813,
+    "qualityVote": null,
+    "notes": "Rehearsal sample. Copilocal offline mode and child-process network isolation both passed."
+  },
+  {
+    "label": "local-final-2",
+    "runtime": "local",
+    "provider": "lmstudio",
+    "model": "ibm/granite-4-h-tiny",
+    "startedAt": "2026-09-24T20:23:49.7448931+00:00",
+    "durationSeconds": 92.74,
+    "timedOut": false,
+    "succeeded": true,
+    "inputTokens": 54806,
+    "outputTokens": 1037,
+    "qualityVote": null,
+    "notes": "Rehearsal sample. Copilocal offline mode and child-process network isolation both passed."
+  },
+  {
+    "label": "local-final-3",
+    "runtime": "local",
+    "provider": "lmstudio",
+    "model": "ibm/granite-4-h-tiny",
+    "startedAt": "2026-09-24T20:25:34.0677484+00:00",
+    "durationSeconds": 81.71,
+    "timedOut": false,
+    "succeeded": true,
+    "inputTokens": 54759,
+    "outputTokens": 525,
+    "qualityVote": null,
+    "notes": "Rehearsal sample. Copilocal offline mode and child-process network isolation both passed."
+  },
+  {
+    "label": "cloud-final-1",
+    "runtime": "cloud",
+    "provider": "github-copilot",
+    "model": "gpt-5.4",
+    "startedAt": "2026-09-24T20:27:20.2092285+00:00",
+    "durationSeconds": 56.76,
+    "timedOut": false,
+    "succeeded": true,
+    "inputTokens": 120298,
+    "outputTokens": 2227,
+    "qualityVote": null,
+    "notes": "Rehearsal sample."
+  }
+]

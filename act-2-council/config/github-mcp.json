@@ -1,0 +1,9 @@
+{
+  "id": "github",
+  "transport": "http",
+  "url": "https://api.githubcopilot.com/mcp/readonly",
+  "auth": "env-token",
+  "tokenEnv": "GITHUB_MCP_TOKEN",
+  "optional": true,
+  "readOnly": true
+}
